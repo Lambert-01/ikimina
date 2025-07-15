@@ -1,0 +1,103 @@
+/* Import custom fonts */
+@import url('https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&family=Nunito:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles */
+@layer base {
+  html {
+    font-family: 'Ubuntu', system-ui, sans-serif;
+    scroll-behavior: smooth;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Nunito', sans-serif;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900;
+  }
+}
+
+/* Custom components */
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-button focus:outline-none focus:ring-2 focus:ring-offset-2 transition duration-300;
+  }
+  
+  .btn-primary {
+    @apply bg-primary-500 text-white hover:bg-primary-600 focus:ring-primary-400;
+  }
+  
+  .btn-secondary {
+    @apply bg-secondary-500 text-black hover:bg-secondary-600 focus:ring-secondary-400;
+  }
+  
+  .btn-accent {
+    @apply bg-accent-500 text-white hover:bg-accent-600 focus:ring-accent-400;
+  }
+  
+  .btn-outline {
+    @apply bg-white text-gray-700 border-gray-300 hover:bg-gray-50 focus:ring-primary-500;
+  }
+  
+  .btn-danger {
+    @apply bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+  }
+  
+  .card {
+    @apply bg-white rounded-2xl shadow-card p-6 transition duration-300;
+  }
+  
+  .form-input {
+    @apply block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500;
+  }
+  
+  .form-label {
+    @apply block text-sm font-medium text-gray-700 mb-1;
+  }
+
+  .section-title {
+    @apply text-3xl md:text-4xl font-bold mb-4 text-center;
+  }
+
+  .section-subtitle {
+    @apply text-lg text-gray-600 max-w-3xl mx-auto text-center mb-12;
+  }
+
+  .rwandan-pattern-bg {
+    background-image: url('data:image/svg+xml;utf8,<svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><path d="M0 0h20v20H0zm20 20h20v20H20zM0 40h20v20H0zm40 0h20v20H40z" fill="rgb(46, 125, 50)" fill-opacity="0.05"/></svg>');
+    background-repeat: repeat;
+  }
+
+  .feature-card {
+    @apply bg-white rounded-xl shadow-card p-6 hover:shadow-lg transition-all duration-300 hover:-translate-y-1;
+  }
+
+  .partner-logo {
+    @apply bg-white p-4 rounded-lg filter grayscale hover:grayscale-0 transition-all duration-300 flex items-center justify-center h-24;
+  }
+}
+
+/* Animation utilities */
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-in forwards;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.5s ease-out forwards;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+}
