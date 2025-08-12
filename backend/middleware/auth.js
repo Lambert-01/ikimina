@@ -1,89 +1,110 @@
 const jwt = require('jsonwebtoken');
 const User = require('../app/models/User');
-const logger = require('../app/utils/logger');
 
 /**
- * Authentication Middleware
- * Supports development mode bypass with DEV_AUTH_BYPASS env variable
+ * Protect routes - Middleware to verify JWT token and attach user to request
  */
-exports.authMiddleware = async (req, res, next) => {
+const protect = async (req, res, next) => {
   try {
-    // Development mode bypass
-    if (process.env.NODE_ENV === 'development' && process.env.DEV_AUTH_BYPASS === 'true') {
-      logger.debug('Development mode: Authentication bypassed');
-      
-      // If specific user ID is provided, use it
-      if (process.env.DEV_AUTH_USER_ID) {
-        const user = await User.findById(process.env.DEV_AUTH_USER_ID);
-        if (user) {
+    let token;
+    
+    // Check if token is in Authorization header
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+      // Get token from header
+      token = req.headers.authorization.split(' ')[1];
+    } 
+    // Check if token is in cookie
+    else if (req.cookies && req.cookies.token) {
+      token = req.cookies.token;
+    }
+    
+    // Check if token exists
+    if (!token) {
+      // In development mode, create a mock user for testing
+      if (process.env.NODE_ENV === 'development' && process.env.DEV_AUTH_BYPASS === 'true') {
+        console.log('Development mode: Creating mock user');
+        
+        // Try to find an existing user first
+        const existingUser = await User.findOne();
+        
+        if (existingUser) {
           req.user = {
-            id: user._id,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            email: user.email,
-            phoneNumber: user.phoneNumber,
-            role: user.role,
-            groups: user.groups
+            id: existingUser._id,
+            firstName: existingUser.firstName,
+            lastName: existingUser.lastName,
+            roles: existingUser.roles || ['member']
           };
+          
+          console.log('Using existing user:', req.user);
           return next();
         }
+        
+        // If no user exists, create a mock user object
+        req.user = {
+          id: 'dev-user-id',
+          firstName: 'Dev',
+          lastName: 'User',
+          roles: ['member', 'manager', 'admin'] // All roles in dev mode
+        };
+        
+        console.log('Created mock user:', req.user);
+        return next();
       }
       
-      // Otherwise, create a mock user object
+      return res.status(401).json({
+        success: false,
+        message: 'Access denied. No token provided'
+      });
+    }
+    
+    try {
+      // Verify token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret123456789');
+      
+      // Find user by id
+      const user = await User.findById(decoded.id);
+      
+      // Check if user exists
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: 'User not found'
+        });
+      }
+      
+      // Check if user is active
+      if (user.status === 'suspended') {
+        return res.status(403).json({
+          success: false,
+          message: 'Your account has been suspended. Please contact support.'
+        });
+      }
+      
+      // Attach user to request
       req.user = {
-        id: 'dev-user-id',
-        firstName: 'Dev',
-        lastName: 'User',
-        email: 'dev@ikimina.rw',
-        phoneNumber: '+250700000000',
-        role: process.env.DEV_AUTH_ROLE || 'member',
-        groups: []
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        roles: user.roles || ['member'],
+        phoneNumber: user.phoneNumber,
+        email: user.email
       };
-      return next();
-    }
-
-    // Get token from header
-    const authHeader = req.header('Authorization');
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      
+      next();
+    } catch (error) {
+      console.error('Token verification error:', error);
+      
       return res.status(401).json({
         success: false,
-        message: 'No token, authorization denied'
+        message: 'Invalid token'
       });
     }
-
-    const token = authHeader.split(' ')[1];
-    
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    // Get user from database to ensure they still exist and have proper permissions
-    const user = await User.findById(decoded.id).select('-password');
-    
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-    
-    // Attach user to request
-    req.user = {
-      id: user._id,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      phoneNumber: user.phoneNumber,
-      role: user.role,
-      groups: user.groups
-    };
-    
-    next();
   } catch (error) {
-    logger.error('Authentication error:', error);
-    return res.status(401).json({
+    console.error('Auth middleware error:', error);
+    
+    return res.status(500).json({
       success: false,
-      message: 'Invalid token'
+      message: 'Authentication error'
     });
   }
 };
@@ -93,15 +114,15 @@ exports.authMiddleware = async (req, res, next) => {
  * Supports multiple roles per user
  * @param {Array} roles - Array of allowed roles
  */
-exports.authorize = (roles = []) => {
+const authorize = (roles = []) => {
   if (typeof roles === 'string') {
     roles = [roles];
   }
 
-  return (req, res, next) => {
+  return async (req, res, next) => {
     // Skip in development mode if bypass is enabled
     if (process.env.NODE_ENV === 'development' && process.env.DEV_AUTH_BYPASS === 'true') {
-      logger.debug(`Development mode: Role authorization bypassed`);
+      console.log(`Development mode: Role authorization bypassed`);
       return next();
     }
 
@@ -112,11 +133,19 @@ exports.authorize = (roles = []) => {
       });
     }
 
+    // If no specific roles required, proceed
+    if (roles.length === 0) {
+      return next();
+    }
+
     // Check if user has any of the required roles
-    if (roles.length && !roles.includes(req.user.role)) {
+    const userRoles = req.user.roles || ['member'];
+    const hasRequiredRole = userRoles.some(role => roles.includes(role));
+    
+    if (!hasRequiredRole) {
       return res.status(403).json({ 
         success: false, 
-        message: 'Forbidden: Insufficient permissions'
+        message: `Forbidden: This action requires one of these roles: ${roles.join(', ')}`
       });
     }
 
@@ -129,14 +158,14 @@ exports.authorize = (roles = []) => {
  * Ensures user is a member of the specified group
  * @param {String} paramName - Name of the URL parameter containing the group ID
  */
-exports.verifyGroupMembership = (paramName = 'groupId') => {
+const verifyGroupMembership = (paramName = 'groupId') => {
   return async (req, res, next) => {
     try {
       const groupId = req.params[paramName];
       
       // Skip in development mode if bypass is enabled
       if (process.env.NODE_ENV === 'development' && process.env.DEV_AUTH_BYPASS === 'true') {
-        logger.debug(`Development mode: Group membership check bypassed for group ${groupId}`);
+        console.log(`Development mode: Group membership check bypassed for group ${groupId}`);
         return next();
       }
       
@@ -150,12 +179,12 @@ exports.verifyGroupMembership = (paramName = 'groupId') => {
       // Check if user is a member of the group
       const user = await User.findById(req.user.id);
       
-      const isMember = user.groups.some(group => 
-        group.group.toString() === groupId && 
-        ['active', 'pending'].includes(group.status)
-      );
+      // Check if user is a member or manager of the group
+      const isMember = user.isMemberOf(groupId);
+      const isManager = user.isManagerOf(groupId);
+      const isAdmin = user.roles.includes('admin');
       
-      if (!isMember && req.user.role !== 'admin') {
+      if (!isMember && !isManager && !isAdmin) {
         return res.status(403).json({
           success: false,
           message: 'You are not a member of this group'
@@ -164,7 +193,7 @@ exports.verifyGroupMembership = (paramName = 'groupId') => {
       
       next();
     } catch (error) {
-      logger.error('Group membership verification error:', error);
+      console.error('Group membership verification error:', error);
       return res.status(500).json({
         success: false,
         message: 'Server error during group membership verification'
@@ -175,17 +204,17 @@ exports.verifyGroupMembership = (paramName = 'groupId') => {
 
 /**
  * Group management verification middleware
- * Ensures user is an admin of the specified group
+ * Ensures user is a manager of the specified group
  * @param {String} paramName - Name of the URL parameter containing the group ID
  */
-exports.verifyGroupAdmin = (paramName = 'groupId') => {
+const verifyGroupManager = (paramName = 'groupId') => {
   return async (req, res, next) => {
     try {
       const groupId = req.params[paramName];
       
       // Skip in development mode if bypass is enabled
       if (process.env.NODE_ENV === 'development' && process.env.DEV_AUTH_BYPASS === 'true') {
-        logger.debug(`Development mode: Group admin check bypassed for group ${groupId}`);
+        console.log(`Development mode: Group manager check bypassed for group ${groupId}`);
         return next();
       }
       
@@ -196,29 +225,33 @@ exports.verifyGroupAdmin = (paramName = 'groupId') => {
         });
       }
       
-      // Check if user is an admin of the group
+      // Check if user is a manager of the group
       const user = await User.findById(req.user.id);
       
-      const isAdmin = user.groups.some(group => 
-        group.group.toString() === groupId && 
-        group.role === 'admin' && 
-        group.status === 'active'
-      );
+      const isManager = user.isManagerOf(groupId);
+      const isAdmin = user.roles.includes('admin');
       
-      if (!isAdmin && req.user.role !== 'admin') {
+      if (!isManager && !isAdmin) {
         return res.status(403).json({
           success: false,
-          message: 'You are not an admin of this group'
+          message: 'You are not a manager of this group'
         });
       }
       
       next();
     } catch (error) {
-      logger.error('Group admin verification error:', error);
+      console.error('Group manager verification error:', error);
       return res.status(500).json({
         success: false,
-        message: 'Server error during group admin verification'
+        message: 'Server error during group manager verification'
       });
     }
   };
+};
+
+module.exports = {
+  protect,
+  authorize,
+  verifyGroupMembership,
+  verifyGroupManager
 }; 

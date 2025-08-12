@@ -159,6 +159,89 @@ exports.createNotification = async (notificationData) => {
 };
 
 /**
+ * Send notification to a user through configured channels
+ * @param {String} userId - User ID to send notification to
+ * @param {String} title - Notification title
+ * @param {String} message - Notification message
+ * @param {Object} options - Additional options
+ * @returns {Promise<Object>} - Result of notification delivery attempts
+ */
+exports.sendNotification = async (userId, title, message, options = {}) => {
+  try {
+    // Get user preferences
+    const user = await User.findById(userId);
+    if (!user) {
+      logger.error(`User not found for notification: ${userId}`);
+      return { success: false, error: 'User not found' };
+    }
+
+    // Create in-app notification
+    const notification = await Notification.create({
+      userId,
+      title,
+      message,
+      type: options.type || 'system',
+      relatedId: options.relatedId,
+      relatedModel: options.relatedModel,
+      read: false
+    });
+
+    // Track delivery results
+    const results = {
+      inApp: { success: true, notificationId: notification._id },
+      email: null,
+      sms: null,
+      push: null
+    };
+
+    // Send email if user has email notifications enabled
+    if (user.notificationPreferences?.email && user.email) {
+      try {
+        // In a real implementation, this would use an email service
+        logger.info(`Would send email to ${user.email}: ${title}`);
+        results.email = { success: true };
+      } catch (error) {
+        logger.error(`Failed to send email notification to ${user.email}:`, error);
+        results.email = { success: false, error: error.message };
+      }
+    }
+
+    // Send SMS if user has SMS notifications enabled
+    if (user.notificationPreferences?.sms && user.phone) {
+      try {
+        // In a real implementation, this would use an SMS service
+        logger.info(`Would send SMS to ${user.phone}: ${title}`);
+        results.sms = { success: true };
+      } catch (error) {
+        logger.error(`Failed to send SMS notification to ${user.phone}:`, error);
+        results.sms = { success: false, error: error.message };
+      }
+    }
+
+    // Send push notification if user has push notifications enabled
+    if (user.notificationPreferences?.push && user.pushTokens?.length > 0) {
+      try {
+        // In a real implementation, this would use a push notification service
+        logger.info(`Would send push notification to user ${userId}: ${title}`);
+        results.push = { success: true };
+      } catch (error) {
+        logger.error(`Failed to send push notification to user ${userId}:`, error);
+        results.push = { success: false, error: error.message };
+      }
+    }
+
+    return {
+      success: true,
+      notification,
+      deliveryResults: results
+    };
+  } catch (error) {
+    logger.error('Error sending notification:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
  * Calculate loan interest and payment schedule
  * @param {Object} loanData - Loan data
  * @returns {Object} Loan calculation results

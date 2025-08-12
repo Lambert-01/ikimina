@@ -37,9 +37,9 @@ const JoinGroupPage: React.FC = () => {
     const loadGroups = async () => {
       try {
         setIsLoading(true);
-        const response = await groupService.getGroups('public');
-        setGroups(response.data || []);
-        setFilteredGroups(response.data || []);
+        const response = await groupService.getPublicGroups();
+        setGroups(response || []);
+        setFilteredGroups(response || []);
       } catch (error) {
         console.error('Error loading groups:', error);
         toast.error('Failed to load available groups');
@@ -109,7 +109,7 @@ const JoinGroupPage: React.FC = () => {
       setIsSubmitting(true);
       
       // Call the API to submit the join request
-      await groupService.joinGroup(data.groupId);
+      await groupService.joinGroup(data.groupId, data.joinCode || '');
       
       toast.success('Join request submitted successfully');
       setIsModalOpen(false);

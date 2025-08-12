@@ -21,7 +21,7 @@ const InviteMembersStep: React.FC<InviteMembersStepProps> = ({
   // Always validate this step (no required fields)
   useEffect(() => {
     validateStep(true);
-  }, [validateStep]);
+  }, []); // Empty dependency array since this only needs to run once
 
   const validateInvite = (): boolean => {
     const newErrors: Record<string, string> = {};

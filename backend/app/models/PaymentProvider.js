@@ -1,15 +1,13 @@
 const mongoose = require('mongoose');
 
-// Schema for storing payment provider configurations and transaction logs
+
 const PaymentProviderSchema = new mongoose.Schema({
-  // Provider identification
   name: {
     type: String,
     required: [true, 'Provider name is required'],
-    enum: ['MTN', 'Airtel', 'Flutterwave', 'Manual', 'Other'],
-    unique: true
+    unique: true,
+    trim: true
   },
-  
   code: {
     type: String,
     required: [true, 'Provider code is required'],
@@ -17,50 +15,71 @@ const PaymentProviderSchema = new mongoose.Schema({
     trim: true,
     uppercase: true
   },
-  
-  // Provider status
+  type: {
+    type: String,
+    enum: ['mobile_money', 'bank', 'card', 'crypto', 'other'],
+    required: [true, 'Provider type is required']
+  },
   isActive: {
     type: Boolean,
     default: true
   },
-  
-  // Provider type
-  type: {
+  description: {
     type: String,
-    enum: ['mobile_money', 'payment_aggregator', 'bank', 'manual', 'other'],
-    required: [true, 'Provider type is required']
+    maxlength: [500, 'Description cannot be more than 500 characters']
   },
-  
-  // API configuration
-  apiConfig: {
-    baseUrl: String,
-    version: String,
-    primaryKey: String,
-    secondaryKey: String,
-    username: String,
-    password: String,
-    merchantId: String,
-    webhook: {
-      url: String,
-      secret: String,
-      enabled: {
-        type: Boolean,
-        default: true
-      }
-    },
-    environment: {
+  logo: {
+    type: String
+  },
+  countryCode: {
+    type: String,
+    default: 'RW',
+    uppercase: true
+  },
+  currency: {
+    type: String,
+    default: 'RWF',
+    uppercase: true
+  },
+  config: {
+    apiUrl: String,
+    apiVersion: String,
+    authType: {
       type: String,
-      enum: ['sandbox', 'production', 'test'],
-      default: 'sandbox'
+      enum: ['basic', 'bearer', 'api_key', 'oauth2', 'custom'],
+      default: 'bearer'
+    },
+    credentials: {
+      clientId: String,
+      clientSecret: String,
+      apiKey: String,
+      username: String,
+      password: String,
+      accessToken: String,
+      refreshToken: String,
+      tokenExpiresAt: Date
     },
     headers: mongoose.Schema.Types.Mixed,
+    webhookUrl: String,
+    webhookSecret: String,
+    callbackUrl: String,
+    sandboxMode: {
+      type: Boolean,
+      default: false
+    },
     timeout: {
       type: Number,
       default: 30000 // 30 seconds
+    },
+    retryAttempts: {
+      type: Number,
+      default: 3
+    },
+    retryDelay: {
+      type: Number,
+      default: 3000 // 3 seconds
     }
   },
-  
-  // Fee structure
   fees: {
     fixedFee: {
       type: Number,
@@ -74,13 +93,8 @@ const PaymentProviderSchema = new mongoose.Schema({
       type: Number,
       default: 0
     },
-    maximumFee: {
-      type: Number,
-      default: 0
-    }
+    maximumFee: Number
   },
-  
-  // Transaction limits
   limits: {
     minAmount: {
       type: Number,
@@ -90,262 +104,129 @@ const PaymentProviderSchema = new mongoose.Schema({
       type: Number,
       default: 2000000
     },
-    dailyLimit: {
+    dailyLimit: Number,
+    monthlyLimit: Number
+  },
+  processingTime: {
+    min: {
       type: Number,
-      default: 5000000
+      default: 0
     },
-    monthlyLimit: {
+    max: {
       type: Number,
-      default: 10000000
+      default: 60
     },
-    perTransactionLimit: {
-      type: Number,
-      default: 2000000
+    unit: {
+      type: String,
+      enum: ['seconds', 'minutes', 'hours', 'days'],
+      default: 'seconds'
     }
   },
-  
-  // Service availability
-  availability: {
-    isAvailable: {
+  supportedOperations: {
+    deposit: {
       type: Boolean,
       default: true
     },
-    lastDowntime: Date,
-    scheduledMaintenance: {
-      start: Date,
-      end: Date,
-      message: String
-    },
-    uptime: {
-      type: Number, // Percentage
-      default: 100
-    }
-  },
-  
-  // Processing settings
-  processingConfig: {
-    autoConfirmation: {
-      type: Boolean,
-      default: false
-    },
-    callbackUrl: String,
-    callbackTimeout: {
-      type: Number,
-      default: 3600000 // 1 hour
-    },
-    retryPolicy: {
-      maxAttempts: {
-        type: Number,
-        default: 3
-      },
-      retryInterval: {
-        type: Number,
-        default: 300000 // 5 minutes
-      },
-      backoffMultiplier: {
-        type: Number,
-        default: 2
-      }
-    },
-    notifyOnFailure: {
+    withdrawal: {
       type: Boolean,
       default: true
     },
-    notificationEmails: [String],
-    notificationPhones: [String]
-  },
-  
-  // Provider account details
-  accountDetails: {
-    accountName: String,
-    accountNumber: String,
-    bankName: String,
-    swiftCode: String,
-    iban: String,
-    currency: {
-      type: String,
-      default: 'RWF'
-    },
-    country: {
-      type: String,
-      default: 'Rwanda'
+    transfer: {
+      type: Boolean,
+      default: true
     }
   },
-  
-  // Contact information
-  contactInfo: {
-    supportEmail: String,
-    supportPhone: String,
-    technicalContactName: String,
-    technicalContactEmail: String,
-    technicalContactPhone: String,
-    website: String,
-    apiDocsUrl: String
-  },
-  
-  // Status logs
-  statusLogs: [{
     status: {
-      type: String,
-      enum: ['operational', 'degraded', 'outage', 'maintenance'],
-      required: true
+    isOperational: {
+      type: Boolean,
+      default: true
     },
-    timestamp: {
-      type: Date,
-      default: Date.now
-    },
-    message: String,
-    duration: Number, // minutes
-    affectedServices: [String]
-  }],
-  
-  // API key rotation
-  keyRotation: {
-    lastRotation: Date,
-    nextScheduledRotation: Date,
-    rotationFrequencyDays: {
-      type: Number,
-      default: 90
-    },
-    autoRotate: {
+    lastChecked: Date,
+    incidents: [{
+      startTime: Date,
+      endTime: Date,
+      description: String,
+      resolved: {
       type: Boolean,
       default: false
     }
+    }]
   },
-  
-  // Meta data
   metadata: {
     type: mongoose.Schema.Types.Mixed
-  }
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: Date
 }, {
   timestamps: true
 });
 
-// Index for faster queries
-PaymentProviderSchema.index({ name: 1 });
-PaymentProviderSchema.index({ code: 1 });
-PaymentProviderSchema.index({ isActive: 1, type: 1 });
-
-// Method to calculate transaction fee
+// Calculate fee amount based on transaction amount
 PaymentProviderSchema.methods.calculateFee = function(amount) {
-  if (!amount || amount <= 0) {
-    return 0;
-  }
+  const { fixedFee, percentageFee, minimumFee, maximumFee } = this.fees;
   
-  // Calculate base fee
-  const fixedFee = this.fees.fixedFee || 0;
-  const percentageFee = this.fees.percentageFee || 0;
-  
-  let totalFee = fixedFee + (amount * percentageFee / 100);
+  let fee = fixedFee + (amount * (percentageFee / 100));
   
   // Apply minimum fee if set
-  if (this.fees.minimumFee && totalFee < this.fees.minimumFee) {
-    totalFee = this.fees.minimumFee;
+  if (minimumFee && fee < minimumFee) {
+    fee = minimumFee;
   }
   
   // Apply maximum fee if set
-  if (this.fees.maximumFee && totalFee > this.fees.maximumFee) {
-    totalFee = this.fees.maximumFee;
+  if (maximumFee && fee > maximumFee) {
+    fee = maximumFee;
   }
   
-  return Math.round(totalFee);
+  return Math.round(fee);
 };
 
-// Method to validate transaction amount
-PaymentProviderSchema.methods.validateTransactionAmount = function(amount) {
-  if (!amount || amount <= 0) {
-    return {
-      valid: false,
-      message: 'Invalid amount: Must be greater than 0'
-    };
-  }
+// Check if provider can handle a transaction of given amount
+PaymentProviderSchema.methods.canProcessAmount = function(amount) {
+  const { minAmount, maxAmount } = this.limits;
   
-  // Check minimum amount
-  if (this.limits.minAmount && amount < this.limits.minAmount) {
-    return {
-      valid: false,
-      message: `Amount below minimum: ${this.limits.minAmount} ${this.accountDetails.currency}`
-    };
-  }
-  
-  // Check maximum amount
-  if (this.limits.maxAmount && amount > this.limits.maxAmount) {
-    return {
-      valid: false,
-      message: `Amount exceeds maximum: ${this.limits.maxAmount} ${this.accountDetails.currency}`
-    };
-  }
-  
-  // Check per transaction limit
-  if (this.limits.perTransactionLimit && amount > this.limits.perTransactionLimit) {
-    return {
-      valid: false,
-      message: `Amount exceeds per transaction limit: ${this.limits.perTransactionLimit} ${this.accountDetails.currency}`
-    };
-  }
-  
-  return {
-    valid: true,
-    message: 'Valid transaction amount'
-  };
+  return amount >= minAmount && amount <= maxAmount;
 };
 
-// Method to log provider status
-PaymentProviderSchema.methods.logStatus = function(status, message, duration, affectedServices = []) {
-  this.statusLogs.push({
-    status,
-    message,
-    timestamp: new Date(),
-    duration,
-    affectedServices
+// Method to record an incident
+PaymentProviderSchema.methods.recordIncident = function(description) {
+  this.status.isOperational = false;
+  
+  this.status.incidents.push({
+    startTime: new Date(),
+    description,
+    resolved: false
   });
   
-  // Update current availability
-  if (status === 'outage' || status === 'maintenance') {
-    this.availability.isAvailable = false;
-    this.availability.lastDowntime = new Date();
-  } else {
-    this.availability.isAvailable = true;
+  return this.save();
+};
+
+// Method to resolve the latest incident
+PaymentProviderSchema.methods.resolveLatestIncident = function() {
+  if (this.status.incidents && this.status.incidents.length > 0) {
+    const latestIncident = this.status.incidents[this.status.incidents.length - 1];
+    
+    if (!latestIncident.resolved) {
+      latestIncident.resolved = true;
+      latestIncident.endTime = new Date();
+      this.status.isOperational = true;
+    }
   }
   
   return this.save();
 };
 
-// Method to rotate API keys
-PaymentProviderSchema.methods.rotateKeys = async function() {
-  const crypto = require('crypto');
+// Method to update operational status
+PaymentProviderSchema.methods.updateOperationalStatus = function(isOperational) {
+  this.status.isOperational = isOperational;
+  this.status.lastChecked = new Date();
   
-  // Generate new keys
-  const newPrimaryKey = crypto.randomBytes(32).toString('hex');
-  const newSecondaryKey = crypto.randomBytes(32).toString('hex');
-  
-  // Store old keys temporarily
-  const oldPrimary = this.apiConfig.primaryKey;
-  const oldSecondary = this.apiConfig.secondaryKey;
-  
-  // Update keys
-  this.apiConfig.primaryKey = newPrimaryKey;
-  this.apiConfig.secondaryKey = newSecondaryKey;
-  this.keyRotation.lastRotation = new Date();
-  
-  // Calculate next rotation date
-  const nextRotation = new Date();
-  nextRotation.setDate(nextRotation.getDate() + this.keyRotation.rotationFrequencyDays);
-  this.keyRotation.nextScheduledRotation = nextRotation;
-  
-  await this.save();
-  
-  return {
-    oldKeys: {
-      primary: oldPrimary,
-      secondary: oldSecondary
-    },
-    newKeys: {
-      primary: newPrimaryKey,
-      secondary: newSecondaryKey
-    },
-    nextRotation: nextRotation
-  };
+  return this.save();
 };
+
+
+module.exports = mongoose.model('PaymentProvider', PaymentProviderSchema);
 
 module.exports = mongoose.model('PaymentProvider', PaymentProviderSchema); 

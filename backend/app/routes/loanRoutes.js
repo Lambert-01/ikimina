@@ -1,82 +1,40 @@
 const express = require('express');
 const router = express.Router();
-const { authMiddleware } = require('../../middleware/auth');
+const { protect } = require('../../middleware/auth');
+const loanController = require('../controllers/loanController');
+const { check } = require('express-validator');
 
-// Controller placeholder - we'll implement real functionality later
-const loanController = {
-  getAllLoans: (req, res) => {
-    const mockLoans = [
-      {
-        _id: '1',
-        amount: 300000,
-        status: 'active',
-        dueDate: new Date(Date.now() + 86400000 * 14).toISOString(), // 14 days from now
-        amountDue: 325000,
-        groupName: 'Community Savings Group'
-      },
-      {
-        _id: '2',
-        amount: 500000,
-        status: 'pending',
-        dueDate: new Date(Date.now() + 86400000 * 30).toISOString(), // 30 days from now
-        amountDue: 550000,
-        groupName: 'Women Entrepreneurs'
-      },
-      {
-        _id: '3',
-        amount: 100000,
-        status: 'completed',
-        dueDate: new Date(Date.now() - 86400000 * 5).toISOString(), // 5 days ago
-        amountDue: 0,
-        groupName: 'Farmer\'s Cooperative'
-      }
-    ];
-    
-    res.json(mockLoans);
-  },
-  getUserLoans: (req, res) => {
-    res.json([]);
-  },
-  getGroupLoans: (req, res) => {
-    res.json([]);
-  },
-  getLoanById: (req, res) => {
-    res.json({});
-  },
-  requestLoan: (req, res) => {
-    res.status(201).json({ message: 'Loan requested successfully' });
-  },
-  voteOnLoan: (req, res) => {
-    res.json({ message: 'Vote recorded' });
-  },
-  getVotingResults: (req, res) => {
-    res.json({ approve: 0, reject: 0, abstain: 0 });
-  },
-  getRepaymentSchedule: (req, res) => {
-    res.json([]);
-  },
-  calculateLoan: (req, res) => {
-    res.json({
-      totalAmount: req.body.amount * 1.1,
-      monthlyPayment: req.body.amount * 1.1 / req.body.term,
-      interestRate: 10
-    });
-  },
-  cancelLoanRequest: (req, res) => {
-    res.json({ message: 'Loan request cancelled' });
-  }
-};
+// Validation middleware
+const loanRequestValidation = [
+  check('groupId', 'Group ID is required').not().isEmpty(),
+  check('amount', 'Amount is required and must be a number').isNumeric(),
+  check('purpose', 'Purpose is required').not().isEmpty(),
+  check('duration', 'Duration is required and must be a number').isNumeric()
+];
 
-// Routes
-router.get('/', authMiddleware, loanController.getAllLoans);
-router.get('/user', authMiddleware, loanController.getUserLoans);
-router.get('/group/:groupId', authMiddleware, loanController.getGroupLoans);
-router.get('/:id', authMiddleware, loanController.getLoanById);
-router.post('/request', authMiddleware, loanController.requestLoan);
-router.post('/calculate', authMiddleware, loanController.calculateLoan);
-router.post('/:id/vote', authMiddleware, loanController.voteOnLoan);
-router.get('/:id/votes', authMiddleware, loanController.getVotingResults);
-router.get('/:id/schedule', authMiddleware, loanController.getRepaymentSchedule);
-router.post('/:id/cancel', authMiddleware, loanController.cancelLoanRequest);
+const loanStatusValidation = [
+  check('status', 'Status is required').isIn(['approved', 'rejected'])
+];
+
+const loanVoteValidation = [
+  check('vote', 'Vote is required').isIn(['approve', 'reject'])
+];
+
+const loanRepaymentValidation = [
+  check('amount', 'Amount is required and must be a number').isNumeric(),
+  check('paymentMethod', 'Payment method is required').not().isEmpty()
+];
+
+// Apply auth middleware to all routes
+router.use(protect);
+
+// Loan request routes
+router.post('/request', loanRequestValidation, loanController.requestLoan);
+router.get('/my-loans', loanController.getMyLoans);
+router.get('/group/:groupId', loanController.getGroupLoans);
+router.get('/:id', loanController.getLoanById);
+router.put('/:id/status', loanStatusValidation, loanController.updateLoanStatus);
+router.post('/:id/vote', loanVoteValidation, loanController.voteLoan);
+router.post('/:id/repay', loanRepaymentValidation, loanController.repayLoan);
 
 module.exports = router; 

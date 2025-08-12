@@ -1,123 +1,161 @@
-# Ikimina
+# Ikimina Platform
 
-A digital platform for managing traditional Rwandan savings groups (Ikimina) with modern financial tools.
+A community savings and loan management platform for Rwanda.
 
 ## Overview
 
-Ikimina is a web application that digitizes the traditional Rwandan savings circle concept, allowing members to create, join, and manage savings groups. The platform facilitates contributions, loans, meetings, and financial reporting in a secure and transparent environment.
-
-## Features
-
-- **User Management**: Member and manager roles with appropriate permissions
-- **Group Management**: Create, join, and manage savings groups
-- **Contributions**: Schedule and track regular financial contributions
-- **Loans**: Request, approve, and manage loans within groups
-- **Meetings**: Schedule and conduct virtual or in-person meetings
-- **Reports**: Generate financial reports and analytics
-- **Notifications**: Receive alerts for important events and deadlines
-
-## Technology Stack
-
-### Backend
-- Node.js
-- Express.js
-- MongoDB
-- JWT Authentication
-
-### Frontend
-- React
-- TypeScript
-- Vite
-- Tailwind CSS
-- Lucide Icons
-- React Router
-
-## Getting Started
-
-### Prerequisites
-- Node.js (v14+)
-- MongoDB
-- npm or yarn
-
-### Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/Lambert-01/ikimina.git
-cd ikimina
-```
-
-2. Install backend dependencies:
-```bash
-cd backend
-npm install
-```
-
-3. Install frontend dependencies:
-```bash
-cd ../frontend/web-client-vite
-npm install
-```
-
-4. Set up environment variables:
-   - Copy `.env-example` to `.env` in the backend directory
-   - Update with your MongoDB connection string and other settings
-
-### Running the Application
-
-#### Development Mode
-Run the start script:
-```bash
-# Windows
-run-ikimina-dev.bat
-
-# Linux/Mac
-./run-ikimina-dev.sh
-```
-
-This will start both the backend server and frontend development server.
-
-#### Manually
-1. Start MongoDB (if running locally)
-2. Start the backend:
-```bash
-cd backend
-npm run dev
-```
-
-3. Start the frontend:
-```bash
-cd frontend/web-client-vite
-npm run dev
-```
+Ikimina is a digital platform that helps community savings groups (known as "Ikimina" in Rwanda) manage their operations, including member contributions, loans, meetings, and financial reporting.
 
 ## Project Structure
 
-```
-ikimina/
-├── backend/
-│   ├── app/
-│   │   ├── controllers/
-│   │   ├── models/
-│   │   ├── routes/
-│   │   └── utils/
-│   ├── config/
-│   ├── middleware/
-│   └── index.js
-└── frontend/
-    └── web-client-vite/
-        ├── public/
-        └── src/
-            ├── components/
-            ├── pages/
-            ├── services/
-            └── store/
+- `/backend` - Node.js/Express API server
+  - `/app` - Application code
+    - `/controllers` - API controllers
+    - `/models` - MongoDB models
+    - `/routes` - API routes
+    - `/utils` - Utility functions
+  - `/config` - Configuration files
+  - `/middleware` - Express middleware
+
+- `/frontend` - React/Vite frontend
+  - `/web-client-vite` - Web client
+    - `/src` - Source code
+      - `/components` - React components
+      - `/pages` - Page components
+      - `/services` - API services
+      - `/store` - State management
+
+## System Requirements
+
+- Node.js v14+
+- MongoDB v4.4+
+- npm or yarn
+
+## Running the Application
+
+### Production-Like Mode
+
+To run the application in a production-like mode locally:
+
+#### Using Scripts
+
+**For Linux/Mac:**
+```bash
+# Make the scripts executable
+chmod +x run-ikimina-prod.sh
+chmod +x run-ikimina-prod-frontend.sh
+
+# Run the backend
+./run-ikimina-prod.sh
+
+# In a new terminal, run the frontend
+./run-ikimina-prod-frontend.sh
 ```
 
-## Contributing
+**For Windows:**
+```
+# Run the backend
+run-ikimina-prod.bat
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+# In a new terminal, run the frontend
+run-ikimina-prod-frontend.bat
+```
+
+#### Manual Setup
+
+1. **Backend Setup:**
+   ```bash
+   cd backend
+   npm install
+   cp .env-example .env  # Modify as needed
+   NODE_ENV=production node index.js
+   ```
+
+2. **Frontend Setup:**
+   ```bash
+   cd frontend/web-client-vite
+   npm install
+   npm run build
+   npm run preview
+   ```
+
+3. **Access the application:**
+   - Backend API: http://localhost:5000
+   - Frontend: http://localhost:4173
+
+### Development Mode
+
+To run the application in development mode:
+
+1. **Start MongoDB:**
+   ```bash
+   mongod --dbpath /path/to/data/db
+   ```
+
+2. **Start backend:**
+   ```bash
+   cd backend
+   npm install
+   npm run dev
+   ```
+
+3. **Start frontend:**
+   ```bash
+   cd frontend/web-client-vite
+   npm install
+   npm run dev
+   ```
+
+4. **Access the application:**
+   - Backend API: http://localhost:5000
+   - Frontend: http://localhost:5173
+
+## Default Users
+
+The system creates the following default users for testing:
+
+1. **Admin User:**
+   - Email: admin@ikimina.com
+   - Password: admin123
+   - Access: Admin Dashboard at http://localhost:4173/admin/login
+
+2. **Regular User:**
+   - Phone: +250722222222
+   - Password: password123
+   - Access: Member Dashboard at http://localhost:4173/login
+
+3. **Manager User:**
+   - Phone: +250733333333
+   - Password: password123
+   - Access: Member Dashboard at http://localhost:4173/login
+
+## Application Structure
+
+### User-Facing Features
+
+- **Homepage** (`/`): Landing page with information about the platform
+- **Authentication**:
+  - Login (`/login`)
+  - Registration (`/register`)
+- **Member Dashboard** (`/member/dashboard`):
+  - Group management
+  - Contributions
+  - Loans
+  - Meetings
+  - Reports
+
+### Admin Panel
+
+The admin panel is completely separate from the user-facing application:
+
+- **Admin Login** (`/admin/login`)
+- **Admin Dashboard** (`/admin/dashboard`)
+- Features:
+  - User management
+  - Group approval
+  - System monitoring
+  - Reports
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is proprietary and confidential.

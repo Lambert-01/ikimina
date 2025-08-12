@@ -1,90 +1,117 @@
 import api from './api';
 
-interface LoanRequest {
+// Types
+export interface LoanRequest {
   groupId: string;
+  amount: number;
   purpose: string;
-  requestedAmount: number;
-  term: number;
-  interestRate: number;
-  currency: string;
-  collateral: {
-    type: string;
-    value: number;
-    description: string;
+  duration: number; // in days
+}
+
+export interface Loan {
+  _id: string;
+  borrower: {
+    _id: string;
+    firstName: string;
+    lastName: string;
   };
+  group: {
+    _id: string;
+    name: string;
+  };
+  amount: number;
+  interest: number;
+  totalRepayment: number;
+  repaidAmount: number;
+  purpose: string;
+  duration: number;
+  dueDate: string;
+  status: 'voting' | 'pending' | 'approved' | 'active' | 'rejected' | 'repaid' | 'defaulted';
+  statusReason?: string;
+  votes?: {
+    required: number;
+    approvals: number;
+    rejections: number;
+    voters: string[];
+  };
+  disbursedAt?: string;
+  repaidAt?: string;
+  repayments: Array<{
+    amount: number;
+    date: string;
+    transaction: string;
+  }>;
+  createdAt: string;
+  updatedAt: string;
 }
 
-interface VoteData {
-  vote: 'approve' | 'reject';
-  comment?: string;
+export interface LoanRepayment {
+  loanId: string;
+  amount: number;
+  paymentMethod: string;
+  reference?: string;
 }
 
-export const loanService = {
-  // Request a loan from group fund
-  requestLoan: async (loanData: LoanRequest) => {
-    const response = await api.post('/loans/request', loanData);
-    return response.data;
-  },
-  
-  // Get all loans (no filter)
-  getLoans: async () => {
-    const response = await api.get('/loans');
-    return response.data;
-  },
-  
-  // Get all user's loans (as borrower)
-  getUserLoans: async (status?: string) => {
-    const query = status ? `?status=${status}` : '';
-    const response = await api.get(`/loans/user${query}`);
-    return response.data;
-  },
-  
-  // Get loans for a specific group
-  getGroupLoans: async (groupId: string, status?: string) => {
-    const query = status ? `?status=${status}` : '';
-    const response = await api.get(`/loans/group/${groupId}${query}`);
-    return response.data;
-  },
-  
-  // Get details of a specific loan
-  getLoanById: async (loanId: string) => {
-    const response = await api.get(`/loans/${loanId}`);
-    return response.data;
-  },
-  
-  // Vote on a loan request
-  voteOnLoan: async (loanId: string, voteData: VoteData) => {
-    const response = await api.post(`/loans/${loanId}/vote`, voteData);
-    return response.data;
-  },
-  
-  // Get voting results for a loan
-  getVotingResults: async (loanId: string) => {
-    const response = await api.get(`/loans/${loanId}/votes`);
-    return response.data;
-  },
-  
-  // Get repayment schedule for a loan
-  getRepaymentSchedule: async (loanId: string) => {
-    const response = await api.get(`/loans/${loanId}/schedule`);
-    return response.data;
-  },
-  
-  // Calculate potential loan details before requesting
-  calculateLoan: async (groupId: string, amount: number, term: number) => {
-    const response = await api.post('/loans/calculate', { 
-      groupId, 
-      amount, 
-      term 
-    });
-    return response.data;
-  },
-  
-  // Cancel a loan request (if still pending)
-  cancelLoanRequest: async (loanId: string) => {
-    const response = await api.post(`/loans/${loanId}/cancel`);
-    return response.data;
-  }
+// Request a loan
+export const requestLoan = async (loanData: LoanRequest) => {
+  const response = await api.post('/api/loans/request', loanData);
+  return response.data;
 };
 
-export default loanService; 
+// Get user's loans
+export const getMyLoans = async (params?: {
+  status?: string;
+  groupId?: string;
+}) => {
+  const response = await api.get('/api/loans/my-loans', { params });
+  return response.data;
+};
+
+// Get loans for a group
+export const getGroupLoans = async (groupId: string, params?: {
+  status?: string;
+}) => {
+  const response = await api.get(`/api/loans/group/${groupId}`, { params });
+  return response.data;
+};
+
+// Get loan details
+export const getLoanById = async (loanId: string) => {
+  const response = await api.get(`/api/loans/${loanId}`);
+  return response.data;
+};
+
+// Update loan status (approve/reject)
+export const updateLoanStatus = async (loanId: string, data: {
+  status: 'approved' | 'rejected';
+  reason?: string;
+}) => {
+  const response = await api.put(`/api/loans/${loanId}/status`, data);
+  return response.data;
+};
+
+// Vote on a loan
+export const voteLoan = async (loanId: string, vote: 'approve' | 'reject') => {
+  const response = await api.post(`/api/loans/${loanId}/vote`, { vote });
+  return response.data;
+};
+
+// Repay a loan
+export const repayLoan = async (loanId: string, repaymentData: {
+  amount: number;
+  paymentMethod: string;
+  reference?: string;
+}) => {
+  const response = await api.post(`/api/loans/${loanId}/repay`, repaymentData);
+  return response.data;
+};
+
+export default {
+  requestLoan,
+  getMyLoans,
+  getGroupLoans,
+  getLoanById,
+  updateLoanStatus,
+  voteLoan,
+  repayLoan
+}; 

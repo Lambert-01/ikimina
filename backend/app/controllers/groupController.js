@@ -1,172 +1,411 @@
 const Group = require('../models/Group');
 const User = require('../models/User');
+const mongoose = require('mongoose');
 const { validationResult } = require('express-validator');
 const ContributionCycle = require('../models/ContributionCycle'); 
 const logger = require('../utils/logger');
 const { asyncHandler } = require('../../middleware/errorHandler');
+const crypto = require('crypto'); // Added for invitation token generation
+
+/**
+ * Get all groups where the user is a member
+ */
+exports.getMemberGroups = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Find all groups where user is a member
+    const groups = await Group.find({
+      'members.user': userId
+    })
+    .populate('members.user', 'firstName lastName')
+    .populate('createdBy', 'firstName lastName')
+    .sort({ createdAt: -1 });
+    
+    return res.status(200).json({
+      success: true,
+      data: groups,
+      message: 'Groups retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Error fetching member groups:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch groups. Please try again.'
+    });
+  }
+};
+
+/**
+ * Get all groups where the user is a manager
+ */
+exports.getManagedGroups = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Find all groups where user is a manager
+    const groups = await Group.find({
+      managers: userId
+    })
+    .populate('members.user', 'firstName lastName')
+    .populate('createdBy', 'firstName lastName')
+    .sort({ createdAt: -1 });
+    
+    return res.status(200).json({
+      success: true,
+      data: groups,
+      message: 'Managed groups retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Error fetching managed groups:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch managed groups. Please try again.'
+    });
+    }
+};
+
+/**
+ * Get public groups for joining
+ */
+exports.getPublicGroups = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { search, province, district, sector, minMembers, maxMembers } = req.query;
+    
+    // Build filter query
+    const filterQuery = { status: 'active' };
+    
+    if (search) {
+      filterQuery.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+    
+    if (province) filterQuery['location.province'] = province;
+    if (district) filterQuery['location.district'] = district;
+    if (sector) filterQuery['location.sector'] = sector;
+    
+    if (minMembers) filterQuery.memberCount = { $gte: parseInt(minMembers) };
+    if (maxMembers) {
+      if (filterQuery.memberCount) {
+        filterQuery.memberCount.$lte = parseInt(maxMembers);
+      } else {
+        filterQuery.memberCount = { $lte: parseInt(maxMembers) };
+      }
+    }
+    
+    // Don't show groups the user is already a member of
+    const groups = await Group.find({
+      ...filterQuery,
+      'members.user': { $ne: userId }
+    })
+    .limit(20)
+    .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: groups,
+      message: 'Public groups retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Error fetching public groups:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch public groups. Please try again.'
+    });
+  }
+};
+
+/**
+ * Get a specific group by ID
+ */
+exports.getGroupById = async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const userId = req.user.id;
+    
+    if (!mongoose.Types.ObjectId.isValid(groupId)) {
+      return res.status(400).json({
+      success: false,
+        message: 'Invalid group ID format'
+      });
+    }
+    
+    const group = await Group.findById(groupId)
+      .populate('members.user', 'firstName lastName email phoneNumber')
+      .populate('createdBy', 'firstName lastName')
+      .populate('managers', 'firstName lastName');
+    
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+    
+    // Check if user has permission to view this group
+    const isMember = group.members.some(member => member.user._id.toString() === userId);
+    const isManager = group.managers.some(manager => manager._id.toString() === userId);
+    
+    if (!isMember && !isManager) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to view this group'
+      });
+    }
+    
+    return res.status(200).json({
+      success: true,
+      data: group,
+      message: 'Group retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Error fetching group:', error);
+    return res.status(500).json({
+        success: false,
+      message: 'Failed to fetch group. Please try again.'
+    });
+  }
+};
 
 /**
  * Create a new group
- * @route POST /api/groups
- * @access Private
  */
-exports.createGroup = asyncHandler(async (req, res) => {
-  const { 
-    name, 
-    description, 
-    contributionAmount, 
-    contributionFrequency, 
-    isPublic,
-    maxMembers,
-    loanEnabled,
-    loanInterestRate,
-    loanMaxAmount,
-    loanMaxDuration,
-    gracePeriod,
-    lateFee
-  } = req.body;
-  
-  // Create group with current user as creator and admin
-  const group = await Group.create({
-    name,
-    description,
-    creator: req.user.id,
-    admins: [req.user.id],
-    members: [{
-      user: req.user.id,
-      joinedAt: Date.now(),
-      status: 'active',
-      role: 'admin'
-    }],
-    membershipSettings: {
-      approvalRequired: true,
-      inviteOnly: !isPublic,
-      maxMembers: maxMembers || 25
-    },
-    contributionSettings: {
-      amount: contributionAmount,
-      frequency: contributionFrequency || 'monthly',
-      gracePeriod: gracePeriod || 3,
-      lateFee: lateFee || 0
-    },
-    loanRules: {
-      enabled: loanEnabled || false,
-      interestRate: loanInterestRate || 5,
-      maxLoanPercent: loanMaxAmount || 200,
-      repaymentPeriod: loanMaxDuration || 90
-    },
-    status: 'active'
-  });
-  
-  // Add group to user's groups
-  await User.findByIdAndUpdate(req.user.id, {
-    $push: {
-      groups: {
-        group: group._id,
-        joinedAt: Date.now(),
-        role: 'admin',
-        status: 'active'
+exports.createGroup = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const {
+      name,
+      description,
+      groupType,
+      contributionAmount,
+      contributionFrequency,
+      loanSettings,
+      meetingSettings
+    } = req.body;
+    
+    // Validation
+    if (!name || !description || !groupType || !contributionAmount || !contributionFrequency) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide all required fields'
+      });
+    }
+    
+    // Create group
+    const newGroup = new Group({
+      name,
+      description,
+      groupType,
+      status: 'pending', // Groups start as pending and need admin approval
+      createdBy: userId,
+      managers: [userId], // Creator is automatically a manager
+      members: [
+        {
+          user: userId,
+          role: 'member',
+          status: 'active',
+          joinedAt: new Date()
+        }
+      ],
+      contributionSettings: {
+        amount: contributionAmount,
+        frequency: contributionFrequency,
+        dueDay: contributionFrequency === 'monthly' ? 5 : undefined,
+        dueDayOfWeek: contributionFrequency === 'weekly' ? 1 : undefined, // Monday
+        gracePeriod: 3,
+        penaltyAmount: 0,
+        penaltyType: 'none'
+      },
+      loanSettings: {
+        enabled: loanSettings?.enabled || false,
+        interestRate: loanSettings?.interestRate || 5,
+        maxLoanMultiplier: loanSettings?.maxLoanMultiplier || 3,
+        maxDurationMonths: loanSettings?.maxDurationMonths || 6,
+        requiresApproval: true,
+        minimumContributions: 3
+      },
+      meetingSettings: {
+        frequency: meetingSettings?.frequency || 'monthly',
+        dayOfWeek: meetingSettings?.dayOfWeek,
+        dayOfMonth: meetingSettings?.dayOfMonth || 15,
+        time: meetingSettings?.time || '14:00',
+        location: 'Virtual',
+        durationMinutes: 60,
+        attendanceRequired: true
+      },
+      financialSummary: {
+        totalContributions: 0,
+        totalLoans: 0,
+        outstandingLoans: 0,
+        totalInterestEarned: 0,
+        availableFunds: 0,
+        totalPenalties: 0
+      },
+      cycle: {
+        startDate: new Date(),
+        isActive: true,
+        number: 1
+      },
+      memberCount: 1
+    });
+    
+    await newGroup.save();
+    
+    // Update user document to track group memberships and manager roles
+    await User.findByIdAndUpdate(userId, {
+      $addToSet: {
+        memberOfGroups: newGroup._id,
+        managerOfGroups: newGroup._id
       }
-    }
-  });
-  
-  // Create first contribution cycle if needed
-  if (contributionAmount && contributionFrequency) {
-    // Calculate cycle dates based on frequency
-    const startDate = new Date();
-    const endDate = new Date();
-    const dueDate = new Date();
+    });
     
-    switch (contributionFrequency) {
-      case 'weekly':
-        endDate.setDate(endDate.getDate() + 7);
-        dueDate.setDate(dueDate.getDate() + 7);
-        break;
-      case 'biweekly':
-        endDate.setDate(endDate.getDate() + 14);
-        dueDate.setDate(dueDate.getDate() + 14);
-        break;
-      case 'monthly':
-      default:
-        endDate.setMonth(endDate.getMonth() + 1);
-        dueDate.setMonth(dueDate.getMonth() + 1);
-    }
-    
-    // Create cycle configuration
-    const cycleConfig = {
-      startDate,
-      endDate,
-      dueDate,
-      gracePeriod: gracePeriod || 3,
-      amount: contributionAmount
-    };
-    
-    // Create first contribution cycle with creator as only member
-    await ContributionCycle.createCycle(group._id, [req.user.id], cycleConfig);
+    return res.status(201).json({
+    success: true,
+      data: newGroup,
+      message: 'Group created successfully'
+    });
+  } catch (error) {
+    console.error('Error creating group:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to create group. Please try again.'
+    });
   }
-  
-  // Log group creation
-  logger.info(`Group created: ${group.name} by user ${req.user.id}`);
-  
-  // Return success response with group details
-  res.status(201).json({
-    success: true,
-    message: 'Group created successfully',
-    data: {
-      id: group._id,
-      name: group.name,
-      description: group.description,
-      contributionSettings: group.contributionSettings,
-      loanRules: group.loanRules,
-      memberCount: 1,
-      isAdmin: true
+};
+
+/**
+ * Join a group
+ */
+exports.joinGroup = async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const userId = req.user.id;
+    const { joinCode } = req.body;
+    
+    if (!mongoose.Types.ObjectId.isValid(groupId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid group ID format'
+      });
     }
-  });
-});
+    
+    const group = await Group.findById(groupId);
 
-/**
- * @desc    Get all groups (that the user is a member of)
- * @route   GET /api/groups
- * @access  Private
- */
-exports.getGroups = asyncHandler(async (req, res) => {
-  const userId = req.user.id;
+  if (!group) {
+    return res.status(404).json({
+      success: false,
+        message: 'Group not found'
+      });
+    }
+    
+    // Check if user is already a member
+    const isAlreadyMember = group.members.some(member => member.user.toString() === userId);
+    
+    if (isAlreadyMember) {
+      return res.status(400).json({
+        success: false,
+        message: 'You are already a member of this group'
+      });
+    }
+    
+    // If the group requires a join code, verify it
+    if (group.joinCode && group.joinCode !== joinCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid join code'
+      });
+    }
+    
+    // Add user to the group
+    group.members.push({
+      user: userId,
+      role: 'member',
+      status: 'active',
+      joinedAt: new Date()
+    });
+    
+    // Update member count
+    group.memberCount = group.members.length;
+    
+    await group.save();
 
-  // Find groups where user is a member
-  const groups = await Group.find({
-    'members.user': userId
-  }).select('name description contributionSettings.amount currency isActive createdAt');
-
-  // Transform the data to match frontend requirements
-  const formattedGroups = groups.map(group => {
-    return {
-      _id: group._id,
-      name: group.name,
-      description: group.description,
-      memberCount: group.members ? group.members.length : 0,
-      contributionAmount: group.contributionSettings.amount,
-      currency: group.currency || 'RWF',
-      isActive: group.isActive !== false, // Default to true if not specified
-      createdAt: group.createdAt
-    };
-  });
-
-  res.status(200).json({
+    // Update user document
+    await User.findByIdAndUpdate(userId, {
+      $addToSet: { memberOfGroups: groupId }
+    });
+    
+    return res.status(200).json({
     success: true,
-    count: formattedGroups.length,
-    data: formattedGroups
-  });
-});
+      message: 'Successfully joined group'
+    });
+  } catch (error) {
+    console.error('Error joining group:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to join group. Please try again.'
+    });
+  }
+};
 
 /**
- * @desc    Get single group by ID
- * @route   GET /api/groups/:id
- * @access  Private
+ * Check if user has manager role for a group
  */
-exports.getGroupById = asyncHandler(async (req, res) => {
-  const group = await Group.findById(req.params.id)
-    .populate('members.user', 'firstName lastName phoneNumber email')
-    .populate('creator', 'firstName lastName');
+exports.checkManagerRole = async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const userId = req.user.id;
+    
+    if (!mongoose.Types.ObjectId.isValid(groupId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid group ID format'
+      });
+    }
+    
+    const group = await Group.findById(groupId);
+    
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+    
+    const isManager = group.managers.includes(userId);
+    
+    return res.status(200).json({
+      success: true,
+      isManager,
+      message: 'Role check completed'
+    });
+  } catch (error) {
+    console.error('Error checking manager role:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to check role. Please try again.'
+    });
+  }
+};
+
+/**
+ * Update a group
+ */
+exports.updateGroup = async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const userId = req.user.id;
+    
+    if (!mongoose.Types.ObjectId.isValid(groupId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid group ID format'
+      });
+    }
+    
+    const group = await Group.findById(groupId);
 
   if (!group) {
     return res.status(404).json({
@@ -175,163 +414,49 @@ exports.getGroupById = asyncHandler(async (req, res) => {
     });
   }
 
-  // Check if user is a member of this group
-  const isMember = group.members.some(
-    member => member.user._id.toString() === req.user.id
-  );
-
-  if (!isMember && group.visibility !== 'public') {
+    // Check if user has manager permission
+    const isManager = group.managers.some(manager => manager.toString() === userId);
+    
+    if (!isManager) {
     return res.status(403).json({
       success: false,
-      message: 'You are not authorized to view this group'
+        message: 'You do not have permission to update this group'
     });
   }
 
-  res.status(200).json({
-    success: true,
-    data: group
-  });
-});
-
-/**
- * @desc    Get public groups for discovery
- * @route   GET /api/groups/public
- * @access  Public
- */
-exports.getPublicGroups = asyncHandler(async (req, res) => {
-  const { limit = 10, page = 1, search = '' } = req.query;
-  
-  // Build query for public groups
-  const query = {
-    'membershipSettings.inviteOnly': false
-  };
-  
-  // Add search if provided
-  if (search) {
-    query.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { description: { $regex: search, $options: 'i' } }
+    // Fields that can be updated
+    const updatableFields = [
+      'name', 'description', 'status', 'contributionSettings',
+      'loanSettings', 'meetingSettings', 'joinCode'
     ];
-  }
-  
-  // Count total matching groups
-  const total = await Group.countDocuments(query);
-  
-  // Get paginated groups
-  const groups = await Group.find(query)
-    .select('name description contributionSettings.amount memberCount createdAt')
-    .sort('-createdAt')
-    .skip((page - 1) * limit)
-    .limit(parseInt(limit));
-  
-  // Format response
-  const formattedGroups = groups.map(group => ({
-    id: group._id,
-    name: group.name,
-    description: group.description,
-    contributionAmount: group.contributionSettings.amount,
-    memberCount: group.memberCount || 0,
-    createdAt: group.createdAt
-  }));
-  
-  res.status(200).json({
-    success: true,
-    count: formattedGroups.length,
-    total,
-    page: parseInt(page),
-    pages: Math.ceil(total / limit),
-    data: formattedGroups
-  });
-});
-
-/**
- * @desc    Update group
- * @route   PUT /api/groups/:id
- * @access  Private (Admin only)
- */
-exports.updateGroup = asyncHandler(async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ success: false, errors: errors.array() });
-  }
-
-  let group = await Group.findById(req.params.id);
-
-  if (!group) {
-    return res.status(404).json({
-      success: false,
-      message: 'Group not found'
+    
+    const updateData = {};
+    
+    // Only update fields that were provided
+    Object.keys(req.body).forEach(key => {
+      if (updatableFields.includes(key)) {
+        updateData[key] = req.body[key];
+      }
     });
-  }
-
-  // Check if user is an admin of this group
-  if (!group.admins.includes(req.user.id)) {
-    return res.status(403).json({
-      success: false,
-      message: 'Only group admins can update group information'
-    });
-  }
-
-  // Update fields that are present in the request
-  const updateData = {};
-  const allowedFields = [
-    'name', 'description', 'category', 'visibility', 'isActive', 'groupImage'
-  ];
-  
-  allowedFields.forEach(field => {
-    if (req.body[field] !== undefined) {
-      updateData[field] = req.body[field];
-    }
-  });
-
-  // Handle nested fields separately
-  if (req.body.contributionSettings) {
-    updateData.contributionSettings = {
-      ...group.contributionSettings,
-      ...req.body.contributionSettings
-    };
-  }
-
-  if (req.body.meetingSettings) {
-    updateData.meetingSettings = {
-      ...group.meetingSettings,
-      ...req.body.meetingSettings
-    };
-  }
-
-  if (req.body.membershipSettings) {
-    updateData.membershipSettings = {
-      ...group.membershipSettings,
-      ...req.body.membershipSettings
-    };
-  }
-
-  if (req.body.payoutSettings) {
-    updateData.payoutSettings = {
-      ...group.payoutSettings,
-      ...req.body.payoutSettings
-    };
-  }
-
-  if (req.body.loanSettings) {
-    updateData.loanSettings = {
-      ...group.loanSettings,
-      ...req.body.loanSettings
-    };
-  }
-
-  group = await Group.findByIdAndUpdate(
-    req.params.id,
+    
+    const updatedGroup = await Group.findByIdAndUpdate(groupId, 
     { $set: updateData },
-    { new: true, runValidators: true }
+      { new: true }
   );
 
-  res.status(200).json({
+    return res.status(200).json({
     success: true,
-    message: 'Group updated successfully',
-    data: group
+      data: updatedGroup,
+      message: 'Group updated successfully'
   });
+  } catch (error) {
+    console.error('Error updating group:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update group. Please try again.'
 });
+  }
+};
 
 /**
  * @desc    Delete group
@@ -349,7 +474,7 @@ exports.deleteGroup = asyncHandler(async (req, res) => {
   }
 
   // Only creator can delete the group
-  if (group.creator.toString() !== req.user.id) {
+  if (group.createdBy.toString() !== req.user.id) {
     return res.status(403).json({
       success: false,
       message: 'Only the group creator can delete the group'
@@ -361,162 +486,6 @@ exports.deleteGroup = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Group deleted successfully'
-  });
-});
-
-/**
- * @desc    Join a group using group code
- * @route   POST /api/groups/join
- * @access  Private
- */
-exports.joinGroup = asyncHandler(async (req, res) => {
-  const { groupCode, groupId } = req.body;
-
-  let group;
-  
-  if (groupCode) {
-    group = await Group.findOne({ groupCode });
-  } else if (groupId) {
-    group = await Group.findById(groupId);
-  } else {
-    return res.status(400).json({
-      success: false,
-      message: 'Group code or group ID is required'
-    });
-  }
-
-  if (!group) {
-    return res.status(404).json({
-      success: false,
-      message: 'Invalid group code or group not found'
-    });
-  }
-
-  // Check if user is already a member
-  const isMember = group.members.some(
-    member => member.user.toString() === req.user.id
-  );
-
-  if (isMember) {
-    return res.status(400).json({
-      success: false,
-      message: 'You are already a member of this group'
-    });
-  }
-
-  // Check if the group has reached maximum members
-  if (group.members.length >= group.membershipSettings.maxMembers) {
-    return res.status(400).json({
-      success: false,
-      message: 'Group has reached maximum number of members'
-    });
-  }
-
-  // Add user to the group with pending or active status based on settings
-  const memberStatus = group.membershipSettings.approvalRequired ? 'pending' : 'active';
-  
-  // Add member to group
-  group.members.push({
-    user: req.user.id,
-    joinedAt: Date.now(),
-    status: memberStatus,
-    role: 'member'
-  });
-  
-  await group.save();
-  
-  // Add group to user's groups
-  await User.findByIdAndUpdate(req.user.id, {
-    $push: {
-      groups: {
-        group: group._id,
-        joinedAt: Date.now(),
-        role: 'member',
-        status: memberStatus
-      }
-    }
-  });
-
-  // In development mode, auto-approve membership if needed
-  if (process.env.NODE_ENV === 'development' && memberStatus === 'pending') {
-    // Auto-approve the member
-    const memberIndex = group.members.findIndex(m => m.user.toString() === req.user.id);
-    if (memberIndex !== -1) {
-      group.members[memberIndex].status = 'active';
-      await group.save();
-      
-      // Update user's group status
-      await User.findOneAndUpdate(
-        { _id: req.user.id, 'groups.group': group._id },
-        { $set: { 'groups.$.status': 'active' } }
-      );
-      
-      logger.dev.info(`Development mode: Auto-approved membership for user ${req.user.id} in group ${group._id}`);
-    }
-  }
-
-  res.status(200).json({
-    success: true,
-    message: group.membershipSettings.approvalRequired && process.env.NODE_ENV !== 'development'
-      ? 'Request to join group sent successfully' 
-      : 'Successfully joined the group',
-    data: {
-      group: {
-        _id: group._id,
-        name: group.name,
-        status: process.env.NODE_ENV === 'development' ? 'active' : memberStatus
-      }
-    }
-  });
-});
-
-/**
- * @desc    Leave group
- * @route   POST /api/groups/:id/leave
- * @access  Private
- */
-exports.leaveGroup = asyncHandler(async (req, res) => {
-  const group = await Group.findById(req.params.id);
-
-  if (!group) {
-    return res.status(404).json({
-      success: false,
-      message: 'Group not found'
-    });
-  }
-
-  // Check if user is a member
-  const memberIndex = group.members.findIndex(
-    member => member.user.toString() === req.user.id
-  );
-
-  if (memberIndex === -1) {
-    return res.status(400).json({
-      success: false,
-      message: 'You are not a member of this group'
-    });
-  }
-
-  // Check if user is the creator
-  if (group.creator.toString() === req.user.id) {
-    return res.status(400).json({
-      success: false,
-      message: 'Group creator cannot leave the group. Transfer ownership first or delete the group.'
-    });
-  }
-
-  // Remove user from group
-  group.members.splice(memberIndex, 1);
-  await group.save();
-  
-  // Remove group from user's groups
-  await User.findByIdAndUpdate(req.user.id, {
-    $pull: { groups: { group: group._id } }
-  });
-
-  res.status(200).json({
-    success: true,
-    message: 'Successfully left the group'
   });
 });
 
@@ -976,4 +945,143 @@ exports.toggleGroupStatus = asyncHandler(async (req, res) => {
       isActive: group.isActive
     }
   });
-}); 
+});
+
+/**
+ * Get pending groups (Admin only)
+ */
+exports.getPendingGroups = async (req, res) => {
+  try {
+    // Check if user is admin
+    if (!req.user.roles.includes('admin')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin role required.'
+      });
+    }
+    
+    // Find all pending groups
+    const groups = await Group.find({ status: 'pending' })
+      .populate('createdBy', 'firstName lastName phoneNumber email')
+      .populate('members.user', 'firstName lastName')
+      .sort({ createdAt: -1 });
+    
+    res.status(200).json({
+      success: true,
+      data: groups,
+      message: 'Pending groups retrieved successfully'
+    });
+  } catch (error) {
+    logger.error('Error fetching pending groups:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch pending groups'
+    });
+  }
+};
+
+/**
+ * Approve a group (Admin only)
+ */
+exports.approveGroup = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Check if user is admin
+    if (!req.user.roles.includes('admin')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin role required.'
+      });
+    }
+    
+    // Find and update group
+    const group = await Group.findById(id);
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+    
+    if (group.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'Group is not pending approval'
+      });
+    }
+    
+    group.status = 'active';
+    group.approvedAt = new Date();
+    group.approvedBy = req.user.id;
+    await group.save();
+    
+    logger.info(`Group ${group.name} approved by admin ${req.user.id}`);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Group approved successfully',
+      data: group
+    });
+  } catch (error) {
+    logger.error('Error approving group:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to approve group'
+    });
+  }
+};
+
+/**
+ * Reject a group (Admin only)
+ */
+exports.rejectGroup = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    
+    // Check if user is admin
+    if (!req.user.roles.includes('admin')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin role required.'
+      });
+    }
+    
+    // Find and update group
+    const group = await Group.findById(id);
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+    
+    if (group.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'Group is not pending approval'
+      });
+    }
+    
+    group.status = 'rejected';
+    group.rejectedAt = new Date();
+    group.rejectedBy = req.user.id;
+    group.rejectionReason = reason || 'No reason provided';
+    await group.save();
+    
+    logger.info(`Group ${group.name} rejected by admin ${req.user.id}`);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Group rejected successfully',
+      data: group
+    });
+  } catch (error) {
+    logger.error('Error rejecting group:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reject group'
+    });
+  }
+}; 

@@ -1,125 +1,106 @@
-import React from 'react';
-import { AlertTriangle } from 'lucide-react';
+import React, { useState } from 'react';
+import { AlertTriangle, X } from 'lucide-react';
 import { Button } from '../ui/button';
-import { Card, CardContent } from '../ui/card';
-import { Link } from 'react-router-dom';
-
-interface OverdueContribution {
-  id: string;
-  groupId: string;
-  groupName: string;
-  amount: number;
-  currency: string;
-  dueDate: string;
-  daysOverdue: number;
-  penalties?: number;
-}
+import type { OverdueContribution } from '../../services/paymentService';
 
 interface OverdueContributionAlertProps {
   overdueContributions: OverdueContribution[];
-  onContribute?: (contributionId: string, groupId: string) => void;
-  className?: string;
+  onMakePayment: (groupId: string) => void;
 }
 
 const OverdueContributionAlert: React.FC<OverdueContributionAlertProps> = ({
   overdueContributions,
-  onContribute,
-  className = '',
+  onMakePayment
 }) => {
-  if (!overdueContributions || overdueContributions.length === 0) {
+  const [dismissed, setDismissed] = useState<boolean>(false);
+  
+  if (dismissed || overdueContributions.length === 0) {
     return null;
   }
-
-  // Format currency
-  const formatCurrency = (amount: number, currency: string = 'RWF'): string => {
-    return new Intl.NumberFormat('en-RW', {
+  
+  const totalOverdue = overdueContributions.reduce((sum, item) => sum + item.amount, 0);
+  
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('rw-RW', {
       style: 'currency',
-      currency: currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
+      currency: 'RWF',
+      minimumFractionDigits: 0
     }).format(amount);
   };
-
-  // Format date
-  const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
+  
   return (
-    <div className={className}>
-      <Card className="border-red-200 bg-red-50">
-        <CardContent className="p-4">
-          <div className="flex items-start">
-            <div className="flex-shrink-0">
-              <AlertTriangle className="h-5 w-5 text-red-500" aria-hidden="true" />
-            </div>
-            <div className="ml-3 w-full">
-              <h3 className="text-sm font-medium text-red-800">
+    <div className="bg-amber-50 border border-amber-200 rounded-md p-4">
+      <div className="flex">
+        <div className="flex-shrink-0">
+          <AlertTriangle className="h-5 w-5 text-amber-400" />
+        </div>
+        <div className="ml-3 flex-1">
+          <div className="flex justify-between items-start">
+            <div>
+              <h3 className="text-sm font-medium text-amber-800">
                 {overdueContributions.length === 1 
                   ? 'You have an overdue contribution' 
                   : `You have ${overdueContributions.length} overdue contributions`}
               </h3>
-              
-              <div className="mt-2">
-                <div className="space-y-3">
-                  {overdueContributions.map((contribution) => (
-                    <div key={contribution.id} className="bg-white p-3 rounded-md border border-red-100">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{contribution.groupName}</p>
-                          <p className="text-xs text-gray-500">
-                            Due on {formatDate(contribution.dueDate)} ({contribution.daysOverdue} days overdue)
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-medium text-red-600">
-                            {formatCurrency(contribution.amount, contribution.currency)}
-                          </p>
-                          {contribution.penalties && contribution.penalties > 0 && (
-                            <p className="text-xs text-red-500">
-                              +{formatCurrency(contribution.penalties, contribution.currency)} penalty
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div className="mt-3 flex justify-end">
-                        {onContribute ? (
-                          <Button 
-                            size="sm" 
-                            onClick={() => onContribute(contribution.id, contribution.groupId)}
-                          >
-                            Pay Now
-                          </Button>
-                        ) : (
-                          <Button 
-                            size="sm" 
-                            asChild
-                          >
-                            <Link to={`/dashboard/member/savings?group=${contribution.groupId}&contribution=${contribution.id}`}>
-                              Pay Now
-                            </Link>
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              <div className="mt-4 text-sm">
-                <p className="text-red-700">
-                  Please make your payments as soon as possible to avoid additional penalties.
+              <div className="mt-2 text-sm text-amber-700">
+                <p>
+                  Total amount overdue: <span className="font-medium">{formatCurrency(totalOverdue)}</span>
                 </p>
               </div>
             </div>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => setDismissed(true)}
+              className="text-amber-500 hover:text-amber-700 hover:bg-amber-100"
+            >
+              <X className="h-4 w-4" />
+            </Button>
           </div>
-        </CardContent>
-      </Card>
+          
+          <div className="mt-4">
+            {overdueContributions.length === 1 ? (
+              <Button 
+                variant="outline" 
+                className="bg-white border-amber-300 text-amber-800 hover:bg-amber-50"
+                onClick={() => onMakePayment(overdueContributions[0].groupId)}
+              >
+                Pay Now
+              </Button>
+            ) : (
+              <div className="space-y-3">
+                {overdueContributions.map((contribution) => (
+                  <div 
+                    key={contribution.groupId} 
+                    className="flex justify-between items-center p-3 bg-white rounded-md border border-amber-100"
+                  >
+                    <div>
+                      <p className="font-medium text-sm">{contribution.groupName}</p>
+                      <p className="text-xs text-gray-500">
+                        {contribution.daysOverdue} days overdue • {formatCurrency(contribution.amount)}
+                      </p>
+                    </div>
+                    <Button 
+                      size="sm"
+                      variant="outline"
+                      className="border-amber-300 text-amber-800 hover:bg-amber-50"
+                      onClick={() => onMakePayment(contribution.groupId)}
+                    >
+                      Pay
+                    </Button>
+                  </div>
+                ))}
+                <Button 
+                  className="w-full bg-amber-500 hover:bg-amber-600 text-white"
+                  onClick={() => onMakePayment(overdueContributions[0].groupId)}
+                >
+                  Pay All Overdue Contributions
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

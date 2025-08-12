@@ -3,35 +3,23 @@ const router = express.Router();
 const groupController = require('../controllers/groupController');
 const auth = require('../../middleware/auth');
 
-// Base route: /api/groups
+// Get routes
+router.get('/member', auth, groupController.getMemberGroups);
+router.get('/managed', auth, groupController.getManagedGroups);
+router.get('/public', auth, groupController.getPublicGroups);
+router.get('/pending', auth, groupController.getPendingGroups);
+router.get('/:id', auth, groupController.getGroupById);
+router.get('/:id/role', auth, groupController.checkManagerRole);
 
-// Public routes
-router.get('/public', groupController.getPublicGroups);
+// Post routes
+router.post('/', auth, groupController.createGroup);
+router.post('/:id/join', auth, groupController.joinGroup);
 
-// Protected routes
-router.use(auth);
-router.post('/', groupController.createGroup);
-router.get('/', groupController.getGroups);
-router.get('/:id', groupController.getGroupById);
-router.put('/:id', groupController.updateGroup);
-router.delete('/:id', groupController.deleteGroup);
+// Put routes
+router.put('/:id', auth, groupController.updateGroup);
 
-// Group compliance routes
-router.get('/:id/compliance', groupController.getGroupCompliance);
-
-// Group contributions routes
-router.get('/:id/contributions', groupController.getGroupContributions);
-
-// Member management routes
-router.post('/:id/invite', groupController.inviteMembers);
-router.put('/:id/members/:memberId/role', groupController.updateMemberRole);
-router.post('/:id/join', groupController.joinGroup);
-router.post('/:id/leave', groupController.leaveGroup);
-
-// Meeting management routes
-router.post('/:id/meetings', groupController.scheduleMeeting);
-
-// Group status management
-router.put('/:id/toggle-status', groupController.toggleGroupStatus);
+// Admin routes
+router.patch('/:id/approve', auth, groupController.approveGroup);
+router.patch('/:id/reject', auth, groupController.rejectGroup);
 
 module.exports = router; 

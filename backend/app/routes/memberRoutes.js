@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const memberController = require('../controllers/memberController');
-const { authMiddleware, authorize } = require('../../middleware/auth');
+const { protect, authorize } = require('../../middleware/auth');
 
 // Protect all routes
-router.use(authMiddleware);
+router.use(protect);
 
 // Get member dashboard data
 router.get('/dashboard', memberController.getDashboard);

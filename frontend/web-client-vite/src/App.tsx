@@ -1,133 +1,168 @@
-import { useState, useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { 
+  Navigate, 
+  useLocation, 
+  Outlet,
+  createBrowserRouter,
+  RouterProvider
+} from 'react-router-dom'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import './App.css'
 
-// Homepage
+// Homepage (Landing page)
 import HomePage from './pages/homepage'
 
 // Auth components
 import LoginForm from './components/auth/LoginForm'
 import RegisterForm from './components/auth/RegisterForm'
 
-// Dashboard layout
+// Dashboard layout and pages
 import DashboardLayout from './components/layout/DashboardLayout'
-
-// Manager pages
-import ManagerDashboard from './pages/manager/dashboard'
-import ManagerMembersPage from './pages/manager/members'
-import ManagerContributionsPage from './pages/manager/contributions'
-import ManagerLoansPage from './pages/manager/loans'
-import ManagerReportsPage from './pages/manager/reports'
-import ManagerSettingsPage from './pages/manager/settings'
-
-// Member pages
-import MemberDashboard from './pages/member/dashboard'
-import CreateGroupPage from './pages/member/create-group'
+import Dashboard from './pages/Dashboard'
+import GroupDashboard from './pages/GroupDashboard'
 import JoinGroupPage from './pages/member/join-group'
-import GroupStatusPage from './pages/member/group-status'
-import MemberGroupPage from './pages/member/group'
+import CreateGroupPage from './pages/member/create-group'
+import MyGroupsPage from './pages/member/my-groups'
 import MemberContributionsPage from './pages/member/contributions'
 import MemberLoansPage from './pages/member/loans'
-import MemberNotificationsPage from './pages/member/notifications'
-import MemberSavingsPage from './pages/member/savings'
+import MemberMeetingsPage from './pages/member/meetings'
+import MemberMessagesPage from './pages/member/messages'
 import MemberReportsPage from './pages/member/reports'
-import EnhancedSettingsPage from './pages/member/settings'
+import SettingsPage from './pages/member/settings'
+
+// Admin pages
+import AdminLayout from './components/admin/AdminLayout'
+import AdminLogin from './pages/admin/login'
+import AdminDashboard from './pages/admin/dashboard'
+import AdminGroups from './pages/admin/groups'
+import AdminUsers from './pages/admin/users'
+import AdminGroupManagement from './pages/admin/group-management'
 
 // Protected route
 import ProtectedRoute from './components/layout/ProtectedRoute'
 
+// Theme provider
+import { ThemeProvider } from './components/ui/theme-provider'
+
+// Auth store
+import useAuthStore from './store/authStore'
+
+// Layout wrapper component
+const DashboardLayoutWrapper = ({ children }: { children: React.ReactNode }) => {
+  return (
+    <DashboardLayout>
+      {children}
+    </DashboardLayout>
+  );
+};
+
+// Admin protected route component
+const AdminProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const location = useLocation();
+  const adminToken = localStorage.getItem('adminToken');
+  
+  if (!adminToken) {
+    return <Navigate to="/admin/login" state={{ from: location }} replace />;
+  }
+  
+  return <>{children}</>;
+};
+
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [userRole, setUserRole] = useState<'member' | 'manager' | null>(null)
+  const { checkAuth } = useAuthStore();
 
   useEffect(() => {
-    // Check if user is logged in (e.g., from localStorage or session)
-    const checkLoginStatus = () => {
-      const token = localStorage.getItem('token')
-      const role = localStorage.getItem('userRole') as 'member' | 'manager' | null
-      
-      if (token) {
-        setIsLoggedIn(true)
-        setUserRole(role)
-      }
+    // Check auth status when app loads
+    checkAuth();
+  }, [checkAuth]);
+
+  // Create router with future flags to fix warnings
+  const router = createBrowserRouter([
+    // Public routes
+    { 
+      path: "/", 
+      element: <HomePage />
+    },
+    { path: "/login", element: <LoginForm /> },
+    { path: "/register", element: <RegisterForm /> },
+    
+    // Admin routes - completely separate from user routes
+    { path: "/admin/login", element: <AdminLogin /> },
+    {
+      path: "/admin",
+      element: <AdminProtectedRoute><AdminLayout /></AdminProtectedRoute>,
+      children: [
+        { path: "dashboard", element: <AdminDashboard /> },
+        { path: "groups", element: <AdminGroups /> },
+        { path: "group-management", element: <AdminGroupManagement /> },
+        { path: "groups/:id", element: <div>Group Detail (Coming Soon)</div> },
+        { path: "users", element: <AdminUsers /> },
+        { path: "loans", element: <div>Loans Management (Coming Soon)</div> },
+        { path: "settings", element: <div>Admin Settings (Coming Soon)</div> },
+        { index: true, element: <Navigate to="/admin/dashboard" replace /> }
+      ]
+    },
+    
+    // Unified Dashboard routes (for all authenticated users)
+    {
+      path: "/dashboard",
+      element: <ProtectedRoute requiredRoles={['member', 'manager', 'user', 'admin']}><DashboardLayoutWrapper><Outlet /></DashboardLayoutWrapper></ProtectedRoute>,
+      children: [
+        { index: true, element: <Dashboard /> },
+        { path: "join-group", element: <JoinGroupPage /> },
+        { path: "create-group", element: <CreateGroupPage /> },
+        { path: "my-groups", element: <MyGroupsPage /> },
+        { path: "group/:groupId/*", element: <GroupDashboard /> },
+        { path: "contributions", element: <MemberContributionsPage /> },
+        { path: "loans", element: <MemberLoansPage /> },
+        { path: "meetings", element: <MemberMeetingsPage /> },
+        { path: "messages", element: <MemberMessagesPage /> },
+        { path: "reports", element: <MemberReportsPage /> },
+        { path: "settings", element: <SettingsPage /> },
+        
+        // Manager-specific routes
+        { path: "manager/group/:groupId", element: <div>Manager Group View (Coming Soon)</div> },
+        { path: "manager/approvals", element: <div>Loan Approvals (Coming Soon)</div> },
+        { path: "manager/reports", element: <div>Manager Reports (Coming Soon)</div> },
+      ]
+    },
+    
+    // Member routes
+    {
+      path: "/member",
+      element: <ProtectedRoute requiredRoles={['member', 'manager', 'user', 'admin']}><DashboardLayoutWrapper><Outlet /></DashboardLayoutWrapper></ProtectedRoute>,
+      children: [
+        { index: true, element: <Navigate to="/dashboard" replace /> },
+        { path: "join-group", element: <JoinGroupPage /> },
+        { path: "create-group", element: <CreateGroupPage /> },
+        { path: "my-groups", element: <MyGroupsPage /> },
+        { path: "contributions", element: <MemberContributionsPage /> },
+        { path: "loans", element: <MemberLoansPage /> },
+        { path: "meetings", element: <MemberMeetingsPage /> },
+        { path: "messages", element: <MemberMessagesPage /> },
+        { path: "reports", element: <MemberReportsPage /> },
+        { path: "settings", element: <SettingsPage /> },
+      ]
+    },
+    {
+      path: "/manager/*", 
+      element: <Navigate to="/dashboard" replace />
+    },
+    
+    // Catch-all redirect
+    { path: "*", element: <Navigate to="/" replace /> }
+  ], {
+    future: {
+      v7_relativeSplatPath: true
     }
-
-    checkLoginStatus()
-  }, [])
-
-  const handleLogin = (role: 'member' | 'manager') => {
-    // In a real app, this would be handled by an authentication service
-    localStorage.setItem('token', 'mock-token')
-    localStorage.setItem('userRole', role)
-    setIsLoggedIn(true)
-    setUserRole(role)
-  }
-
-  const handleLogout = () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('userRole')
-    setIsLoggedIn(false)
-    setUserRole(null)
-  }
+  });
 
   return (
-    <>
-      <Router>
-        <Routes>
-          {/* Public routes */}
-          <Route path="/" element={<HomePage />} />
-          <Route path="/login" element={<LoginForm onLogin={handleLogin} />} />
-          <Route path="/register" element={<RegisterForm />} />
-
-          {/* Manager routes */}
-          <Route 
-            path="/manager" 
-            element={
-              <ProtectedRoute isAuthenticated={isLoggedIn && userRole === 'manager'}>
-                <DashboardLayout userRole="manager" onLogout={handleLogout} />
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<Navigate to="/manager/dashboard" replace />} />
-            <Route path="dashboard" element={<ManagerDashboard />} />
-            <Route path="members" element={<ManagerMembersPage />} />
-            <Route path="contributions" element={<ManagerContributionsPage />} />
-            <Route path="loans" element={<ManagerLoansPage />} />
-            <Route path="reports" element={<ManagerReportsPage />} />
-            <Route path="settings" element={<EnhancedSettingsPage />} />
-          </Route>
-
-          {/* Member routes */}
-          <Route 
-            path="/member" 
-            element={
-              <ProtectedRoute isAuthenticated={isLoggedIn && userRole === 'member'}>
-                <DashboardLayout userRole="member" onLogout={handleLogout} />
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<Navigate to="/member/dashboard" replace />} />
-            <Route path="dashboard" element={<MemberDashboard />} />
-            <Route path="create-group" element={<CreateGroupPage />} />
-            <Route path="join-group" element={<JoinGroupPage />} />
-            <Route path="group-status" element={<GroupStatusPage />} />
-            <Route path="group/:groupId" element={<MemberGroupPage />} />
-            <Route path="contributions" element={<MemberContributionsPage />} />
-            <Route path="loans" element={<MemberLoansPage />} />
-            <Route path="notifications" element={<MemberNotificationsPage />} />
-            <Route path="savings" element={<MemberSavingsPage />} />
-            <Route path="reports" element={<MemberReportsPage />} />
-            <Route path="settings" element={<EnhancedSettingsPage />} />
-          </Route>
-
-          {/* Catch-all redirect */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Router>
-      <ToastContainer position="bottom-right" />
-    </>
+    <ThemeProvider>
+      <RouterProvider router={router} />
+      <ToastContainer position="bottom-right" theme="colored" />
+    </ThemeProvider>
   )
 }
 

@@ -1,93 +1,183 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Menu, Bell, User, Search, LogOut } from 'lucide-react';
+import {
+  Menu,
+  Bell,
+  Sun,
+  Moon,
+  User,
+  LogOut,
+  Settings,
+  ChevronDown
+} from 'lucide-react';
 import { Button } from '../ui/button';
+import { cn } from '../../lib/utils';
 
-interface TopbarProps {
-  toggleSidebar: () => void;
-  onLogout?: () => void;
-  user?: {
-    firstName?: string;
-    lastName?: string;
-    email?: string;
-    role?: string;
-  } | null;
+export interface TopbarProps {
+  toggleMobileMenu: () => void;
+  theme: 'light' | 'dark';
+  toggleTheme: () => void;
+  userAvatar: string;
+  userName: string;
+  onLogout: () => void;
 }
 
-const Topbar: React.FC<TopbarProps> = ({ toggleSidebar, user, onLogout }) => {
+const Topbar: React.FC<TopbarProps> = ({
+  toggleMobileMenu,
+  theme,
+  toggleTheme,
+  userAvatar,
+  userName,
+  onLogout
+}) => {
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [notificationCount] = useState(3);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  
+  const toggleUserMenu = () => {
+    setUserMenuOpen(prev => !prev);
+    if (notificationsOpen) setNotificationsOpen(false);
+  };
+  
+  const toggleNotifications = () => {
+    setNotificationsOpen(prev => !prev);
+    if (userMenuOpen) setUserMenuOpen(false);
+  };
+  
   return (
-    <header className="sticky top-0 z-10 bg-white shadow-sm border-b border-gray-200">
-      <div className="px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Left: Menu button & Logo */}
-          <div className="flex items-center">
-            <button
-              type="button"
-              className="inline-flex items-center justify-center p-2 rounded-md text-gray-500 hover:text-gray-900 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500 lg:hidden"
-              onClick={toggleSidebar}
+    <header className="fixed top-0 left-0 right-0 bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 h-16 z-30">
+      <div className="h-full px-4 flex items-center justify-between">
+        {/* Logo and mobile menu button */}
+        <div className="flex items-center">
+          <button
+            onClick={toggleMobileMenu}
+            className="md:hidden mr-2 p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
+            aria-label="Toggle mobile menu"
+          >
+            <Menu className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+          </button>
+          
+          <Link to="/" className="flex items-center">
+            <div className="h-10 w-10 rounded-full bg-gradient-to-r from-green-500 to-blue-600 flex items-center justify-center mr-3">
+              <span className="text-xl font-bold text-white">IK</span>
+            </div>
+            <span className="text-xl font-bold text-gray-900 dark:text-white hidden md:block">
+              Ikimina
+            </span>
+          </Link>
+        </div>
+        
+        {/* Right side controls */}
+        <div className="flex items-center space-x-2">
+          {/* Theme toggle */}
+          <Button
+            onClick={toggleTheme}
+            variant="ghost"
+            size="icon"
+            className="rounded-full"
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? (
+              <Sun className="h-5 w-5 text-yellow-400" />
+            ) : (
+              <Moon className="h-5 w-5 text-gray-700" />
+            )}
+          </Button>
+          
+          {/* Notifications */}
+          <div className="relative">
+            <Button
+              onClick={toggleNotifications}
+              variant="ghost"
+              size="icon"
+              className="rounded-full"
+              aria-label="Notifications"
             >
-              <span className="sr-only">Open sidebar</span>
-              <Menu className="h-6 w-6" aria-hidden="true" />
-            </button>
+              <Bell className="h-5 w-5 text-gray-700 dark:text-gray-300" />
+              {notificationCount > 0 && (
+                <span className="absolute top-0 right-0 h-5 w-5 text-xs bg-red-500 text-white rounded-full flex items-center justify-center">
+                  {notificationCount}
+                </span>
+              )}
+            </Button>
             
-            <div className="hidden lg:flex lg:items-center lg:ml-2">
-              <span className="text-lg font-semibold text-gray-800">
-                {user?.role === 'manager' ? 'Manager Dashboard' : 'Member Dashboard'}
-              </span>
-            </div>
-          </div>
-
-          {/* Center: Search (optional) */}
-          <div className="flex-1 max-w-md mx-4 hidden md:block">
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-5 w-5 text-gray-400" />
+            {/* Notifications dropdown */}
+            {notificationsOpen && (
+              <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-md shadow-lg overflow-hidden z-50 border border-gray-200 dark:border-gray-700">
+                <div className="p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                  <h3 className="text-sm font-medium text-gray-900 dark:text-white">Notifications</h3>
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                  <div className="p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">Your contribution was received</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">2 hours ago</p>
+                  </div>
+                  <div className="p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-200 dark:border-gray-700">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">New meeting scheduled</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Yesterday</p>
+                  </div>
+                  <div className="p-3 hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">Your loan was approved</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">3 days ago</p>
+                  </div>
+                </div>
+                <div className="p-3 bg-gray-50 dark:bg-gray-800 text-center border-t border-gray-200 dark:border-gray-700">
+                  <Link to="/notifications" className="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300">
+                    View all notifications
+                  </Link>
+                </div>
               </div>
-              <input
-                type="text"
-                placeholder="Search..."
-                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-gray-50 placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-              />
-            </div>
+            )}
           </div>
-
-          {/* Right: Actions */}
-          <div className="flex items-center space-x-4">
-            {/* Notifications */}
-            <button className="p-1 rounded-full text-gray-500 hover:text-gray-900 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500">
-              <span className="sr-only">View notifications</span>
-              <Bell className="h-6 w-6" />
-            </button>
+          
+          {/* User menu */}
+          <div className="relative">
+            <Button
+              onClick={toggleUserMenu}
+              variant="ghost"
+              className="flex items-center space-x-2 rounded-full py-1.5"
+              aria-label="User menu"
+            >
+              <div className="h-8 w-8 rounded-full bg-primary-600 flex items-center justify-center text-white">
+                {userAvatar}
+              </div>
+              <span className="hidden md:block text-gray-900 dark:text-white">
+                {userName}
+              </span>
+              <ChevronDown className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+            </Button>
             
-            {/* Profile dropdown */}
-            <div className="relative">
-              <Link to="/dashboard/member/settings" className="flex items-center space-x-3 p-1 rounded-full hover:bg-gray-100">
-                <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center">
-                  <span className="text-primary-700 font-bold text-sm">
-                    {user?.firstName?.charAt(0) || 'U'}
-                  </span>
+            {/* User dropdown */}
+            {userMenuOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg overflow-hidden z-50 border border-gray-200 dark:border-gray-700">
+                <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">{userName}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Member</p>
                 </div>
-                <div className="hidden md:block">
-                  <p className="text-sm font-medium text-gray-800">
-                    {user ? `${user.firstName || ''} ${user.lastName || ''}` : 'User'}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {user?.role || 'member'}
-                  </p>
+                <div>
+                  <Link
+                    to="/profile"
+                    className="flex items-center px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    <User className="h-4 w-4 mr-3 text-gray-500 dark:text-gray-400" />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Profile</span>
+                  </Link>
+                  <Link
+                    to="/settings"
+                    className="flex items-center px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    <Settings className="h-4 w-4 mr-3 text-gray-500 dark:text-gray-400" />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Settings</span>
+                  </Link>
+                  <button
+                    onClick={onLogout}
+                    className="flex items-center px-4 py-2 w-full text-left hover:bg-gray-50 dark:hover:bg-gray-700 border-t border-gray-200 dark:border-gray-700"
+                  >
+                    <LogOut className="h-4 w-4 mr-3 text-gray-500 dark:text-gray-400" />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Sign out</span>
+                  </button>
                 </div>
-              </Link>
-            </div>
-            
-            {/* Logout button */}
-            {onLogout && (
-              <button
-                onClick={onLogout}
-                className="p-1 rounded-full text-gray-500 hover:text-gray-900 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                title="Logout"
-              >
-                <span className="sr-only">Logout</span>
-                <LogOut className="h-6 w-6" />
-              </button>
+              </div>
             )}
           </div>
         </div>

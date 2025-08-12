@@ -1,0 +1,9 @@
+Debug script started at: 2025-08-12T00:07:26.740Z
+Loading express...
+Express loaded successfully
+Creating app...
+App created successfully
+Starting server on port 5000...
+Script completed
+Server started successfully on port 5000
+Server still running after 5 seconds

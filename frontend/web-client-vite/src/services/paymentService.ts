@@ -1,79 +1,123 @@
 import api from './api';
 
-interface PaymentRequest {
+// Types
+export interface ContributionPayment {
+  groupId: string;
   amount: number;
-  paymentProvider: 'MTN' | 'AIRTEL';
-  phoneNumber: string;
-  description: string;
-  groupId?: string;
-  contributionCycleId?: string;
-  loanId?: string;
+  paymentMethod: string;
+  reference?: string;
 }
 
-interface LinkPaymentProviderData {
-  provider: 'MTN' | 'AIRTEL';
-  phoneNumber: string;
-  accountName?: string;
+export interface Transaction {
+  _id: string;
+  user: string;
+  group: {
+    _id: string;
+    name: string;
+  };
+  type: 'contribution' | 'loan_repayment' | 'loan_disbursement' | 'withdrawal';
+  amount: number;
+  paymentMethod: string;
+  reference?: string;
+  status: 'pending' | 'completed' | 'failed' | 'cancelled';
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
-export const paymentService = {
-  // Make a contribution payment
-  makeContribution: async (groupId: string, cycleId: string, paymentData: Omit<PaymentRequest, 'groupId' | 'contributionCycleId'>) => {
-    const request = {
-      ...paymentData,
-      groupId,
-      contributionCycleId: cycleId
-    };
-    const response = await api.post('/payments/contribution', request);
-    return response.data;
-  },
+export interface ContributionSummary {
+  totalContributed: number;
+  contributionsByGroup: Array<{
+    groupId: string;
+    groupName: string;
+    total: number;
+  }>;
+  upcomingContributions: Array<{
+    groupId: string;
+    groupName: string;
+    amount: number;
+    dueDate: string;
+  }>;
+}
 
-  // Make a loan repayment
-  makeRepayment: async (loanId: string, paymentData: Omit<PaymentRequest, 'loanId'>) => {
-    const request = {
-      ...paymentData,
-      loanId
-    };
-    const response = await api.post('/payments/loan-repayment', request);
-    return response.data;
-  },
+export interface OverdueContribution {
+  groupId: string;
+  groupName: string;
+  amount: number;
+  daysOverdue: number;
+}
 
-  // Get payment transaction history
-  getTransactionHistory: async (filters?: object) => {
-    const queryParams = new URLSearchParams(filters as Record<string, string>).toString();
-    const response = await api.get(`/payments/transactions?${queryParams}`);
-    return response.data;
-  },
+export interface PaymentMethod {
+  _id: string;
+  provider: string;
+  accountNumber: string;
+  accountName: string;
+  isVerified: boolean;
+  isPrimary: boolean;
+  verifiedAt?: string;
+}
 
-  // Get specific transaction details
-  getTransactionById: async (transactionId: string) => {
-    const response = await api.get(`/payments/transactions/${transactionId}`);
-    return response.data;
-  },
-  
-  // Link payment provider to user account
-  linkPaymentProvider: async (data: LinkPaymentProviderData) => {
-    const response = await api.post('/payments/link-provider', data);
-    return response.data;
-  },
-  
-  // Get user linked payment providers
-  getLinkedProviders: async () => {
-    const response = await api.get('/payments/linked-providers');
-    return response.data;
-  },
-  
-  // Verify payment transaction status
-  verifyTransactionStatus: async (transactionId: string) => {
-    const response = await api.get(`/payments/verify/${transactionId}`);
-    return response.data;
-  },
-  
-  // Check if a payment is in progress (to prevent double payments)
-  checkPaymentInProgress: async (resourceType: 'contribution' | 'loan', resourceId: string) => {
-    const response = await api.get(`/payments/status/${resourceType}/${resourceId}`);
-    return response.data;
-  }
+// Make a contribution payment
+export const makeContribution = async (paymentData: ContributionPayment) => {
+  const response = await api.post('/api/payments/contribution', paymentData);
+  return response.data;
 };
 
-export default paymentService; 
+// Get contribution history
+export const getContributionHistory = async (params?: {
+  groupId?: string;
+  startDate?: string;
+  endDate?: string;
+  limit?: number;
+  page?: number;
+}) => {
+  const response = await api.get('/api/payments/contributions', { params });
+  return response.data;
+};
+
+// Get contribution summary
+export const getContributionSummary = async (groupId?: string) => {
+  const response = await api.get('/api/payments/contributions/summary', {
+    params: groupId ? { groupId } : {}
+  });
+  return response.data;
+};
+
+// Get overdue contributions
+export const getOverdueContributions = async () => {
+  const response = await api.get('/api/payments/contributions/overdue');
+  return response.data;
+};
+
+// Get payment methods
+export const getPaymentMethods = async () => {
+  const response = await api.get('/api/payments/methods');
+  return response.data;
+};
+
+// Add payment method
+export const addPaymentMethod = async (paymentMethod: {
+  provider: string;
+  accountNumber: string;
+  accountName: string;
+  isPrimary?: boolean;
+}) => {
+  const response = await api.post('/api/payments/methods', paymentMethod);
+  return response.data;
+};
+
+// Remove payment method
+export const removePaymentMethod = async (methodId: string) => {
+  const response = await api.delete(`/api/payments/methods/${methodId}`);
+  return response.data;
+};
+
+export default {
+  makeContribution,
+  getContributionHistory,
+  getContributionSummary,
+  getOverdueContributions,
+  getPaymentMethods,
+  addPaymentMethod,
+  removePaymentMethod
+}; 

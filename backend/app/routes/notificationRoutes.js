@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { authMiddleware } = require('../../middleware/auth');
+const { protect } = require('../../middleware/auth');
 
 // Controller placeholder - we'll implement real functionality later
 const notificationController = {
@@ -66,9 +66,9 @@ const notificationController = {
 };
 
 // Routes
-router.get('/', authMiddleware, notificationController.getNotifications);
-router.put('/:id/read', authMiddleware, notificationController.markAsRead);
-router.put('/mark-all-read', authMiddleware, notificationController.markAllAsRead);
-router.delete('/:id', authMiddleware, notificationController.deleteNotification);
+router.get('/', protect, notificationController.getNotifications);
+router.put('/:id/read', protect, notificationController.markAsRead);
+router.put('/mark-all-read', protect, notificationController.markAllAsRead);
+router.delete('/:id', protect, notificationController.deleteNotification);
 
 module.exports = router; 

@@ -1,77 +1,34 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const { authMiddleware } = require('../../middleware/auth');
+const { protect } = require('../../middleware/auth');
 const paymentController = require('../controllers/paymentController');
-const { body } = require('express-validator');
+const { check } = require('express-validator');
 
-// Validate payment input
-const validatePayment = [
-  body('paymentMethod')
-    .isIn(['cash', 'mobile_money', 'bank_transfer', 'other'])
-    .withMessage('Invalid payment method'),
-  body('amount')
-    .isNumeric()
-    .withMessage('Amount must be a number')
-    .custom(value => value > 0)
-    .withMessage('Amount must be greater than 0')
+// Validation middleware
+const contributionValidation = [
+  check('groupId', 'Group ID is required').not().isEmpty(),
+  check('amount', 'Amount is required and must be a number').isNumeric(),
+  check('paymentMethod', 'Payment method is required').not().isEmpty()
 ];
 
-// Validate mobile money payment
-const validateMobileMoneyPayment = [
-  body('amount')
-    .isNumeric()
-    .withMessage('Amount must be a number')
-    .custom(value => value > 0)
-    .withMessage('Amount must be greater than 0'),
-  body('phoneNumber')
-    .notEmpty()
-    .withMessage('Phone number is required'),
-  body('paymentType')
-    .optional()
-    .isIn(['contribution', 'loan_repayment', 'membership_fee', 'other'])
-    .withMessage('Invalid payment type'),
+const paymentMethodValidation = [
+  check('provider', 'Provider is required').not().isEmpty(),
+  check('accountNumber', 'Account number is required').not().isEmpty(),
+  check('accountName', 'Account name is required').not().isEmpty()
 ];
 
-// Public routes (callbacks from payment providers)
-router.post('/:provider/callback', paymentController.mobileMoneyCallback);
-
-// Protected routes
-router.use(authMiddleware);
+// Apply auth middleware to all routes
+router.use(protect);
 
 // Contribution routes
-router.post(
-  '/contribution/initiate',
-  [
-    ...validatePayment,
-    body('groupId').isMongoId().withMessage('Invalid group ID')
-  ],
-  paymentController.initiateContribution
-);
+router.post('/contribution', contributionValidation, paymentController.makeContribution);
+router.get('/contributions', paymentController.getContributionHistory);
+router.get('/contributions/summary', paymentController.getContributionSummary);
+router.get('/contributions/overdue', paymentController.getOverdueContributions);
 
-// Loan repayment routes
-router.post(
-  '/loan/repay',
-  [
-    ...validatePayment,
-    body('loanId').isMongoId().withMessage('Invalid loan ID')
-  ],
-  paymentController.initiateLoanRepayment
-);
-
-// Payment status check
-router.get('/:transactionId/status', paymentController.checkPaymentStatus);
-
-// Payment history
-router.get('/history', paymentController.getPaymentHistory);
-
-// Initiate mobile money payment
-router.post(
-  '/mobile-money/initiate', 
-  validateMobileMoneyPayment,
-  paymentController.initiateMobileMoneyPayment
-);
-
-// Verify payment status
-router.get('/verify/:transactionId', paymentController.verifyPayment);
+// Payment methods routes
+router.get('/methods', paymentController.getPaymentMethods);
+router.post('/methods', paymentMethodValidation, paymentController.addPaymentMethod);
+router.delete('/methods/:id', paymentController.removePaymentMethod);
 
 module.exports = router;

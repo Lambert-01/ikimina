@@ -1,644 +1,427 @@
 const User = require('../models/User');
-const { validationResult } = require('express-validator');
-const crypto = require('crypto');
-const logger = require('../utils/logger');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 
 /**
- * Register a new user with enhanced KYC options
- * @route POST /api/auth/register
- * @access Public
+ * @desc    Register a new user
+ * @route   POST /auth/register
+ * @access  Public
  */
-exports.register = async (req, res, next) => {
+exports.register = async (req, res) => {
   try {
-    // Check for validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
+    const { firstName, lastName, phoneNumber, email, password, language } = req.body;
+    
+    console.log('Registration attempt:', { firstName, lastName, phoneNumber, email });
+
+    // Validate required fields
+    if (!firstName || !lastName || !phoneNumber || !email || !password) {
+      console.log('Missing required fields');
       return res.status(400).json({
         success: false,
-        errors: errors.array()
+        message: 'Please provide all required fields (firstName, lastName, phoneNumber, email, password)'
       });
     }
 
-    const { 
-      firstName, 
-      lastName, 
-      phoneNumber, 
-      email, 
-      password, 
-      language,
-      dateOfBirth,
-      nationalId,
-      district,
-      sector,
-      cell,
-      village
-    } = req.body;
+    // Validate phone number format
+    if (!phoneNumber.startsWith('+250')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number must start with +250'
+      });
+    }
 
-    // Check if user with this phone number already exists
-    const existingUser = await User.findOne({ phoneNumber });
-    if (existingUser) {
+    // Check if user already exists with this phone number
+    let user = await User.findOne({ phoneNumber });
+    
+    if (user) {
       return res.status(409).json({
         success: false,
-        message: 'A user with this phone number already exists'
+        message: 'User phone number already exists'
       });
     }
 
-    // Check if email is provided and already exists
-    if (email) {
-      const emailExists = await User.findOne({ email });
-      if (emailExists) {
-        return res.status(409).json({
-          success: false,
-          message: 'A user with this email already exists'
-        });
-      }
+    // Check if user already exists with this email
+    user = await User.findOne({ email });
+    
+    if (user) {
+      return res.status(409).json({
+        success: false,
+        message: 'User with this email already exists'
+      });
     }
 
-    // Check if National ID is provided and already exists
-    if (nationalId) {
-      const nidExists = await User.findOne({ nationalId });
-      if (nidExists) {
-        return res.status(409).json({
-          success: false,
-          message: 'A user with this National ID already exists'
-        });
-      }
-    }
-
-    // Generate verification token
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // Create new user with enhanced fields
-    const user = await User.create({
+    // Create new user
+    user = new User({
       firstName,
       lastName,
       phoneNumber,
       email,
       password,
-      language: language || 'rw',
-      verificationToken: verificationCode,
-      // Auto-verify users in development mode
-      isVerified: process.env.NODE_ENV === 'development',
-      // Enhanced KYC fields
-      dateOfBirth,
-      nationalId,
-      location: {
-        district,
-        sector,
-        cell,
-        village
-      },
-      kycVerified: nationalId ? process.env.NODE_ENV === 'development' : false,
-      kycLevel: nationalId ? 'basic' : 'none',
-      registrationDate: Date.now()
+      language: language || 'en',
+      isVerified: true // For simplicity in development, set to true
     });
 
-    // Remove password from response
-    user.password = undefined;
-    user.verificationToken = undefined;
+    await user.save();
+    console.log('User created successfully:', user._id);
 
-    // Send verification code (in real-world this would be sent via SMS)
-    // This is just for development purposes
-    logger.info(`Verification code for ${phoneNumber}: ${verificationCode}`);
+    // Generate token
+    const token = user.getSignedJwtToken();
 
+    // Return token and user data (consistent with login response)
     res.status(201).json({
       success: true,
-      message: 'User registered successfully. Please verify your phone number.',
+      message: 'User registered successfully',
       data: {
+        token,
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          phoneNumber: user.phoneNumber,
+          email: user.email,
+          roles: user.roles,
+          primaryRole: 'member',
+          memberOfGroups: [],
+          managerOfGroups: []
+        },
+        // Also provide flattened structure for backward compatibility
         id: user._id,
         firstName: user.firstName,
         lastName: user.lastName,
         phoneNumber: user.phoneNumber,
         email: user.email,
-        language: user.language,
-        isVerified: user.isVerified,
-        kycVerified: user.kycVerified,
-        kycLevel: user.kycLevel
+        roles: user.roles,
+        primaryRole: 'member',
+        memberOfGroups: [],
+        managerOfGroups: []
       }
     });
   } catch (error) {
-    logger.error('Registration error:', error);
-    next(error);
+    console.error('Register error:', error);
+    
+    // Handle mongoose validation errors
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(val => val.message);
+      return res.status(400).json({
+        success: false,
+        message: messages.join('. ')
+      });
+    }
+    
+    // Handle duplicate key errors
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyValue)[0];
+      let message = 'Duplicate entry detected';
+      
+      if (field === 'phoneNumber') {
+        message = 'User phone number already exists';
+      } else if (field === 'email') {
+        message = 'User with this email already exists';
+      }
+      
+      return res.status(409).json({
+        success: false,
+        message
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Registration failed. Please try again.'
+    });
   }
 };
 
 /**
- * Initiate login process - may trigger MFA or NID verification
- * @route POST /api/auth/initiate-login
- * @access Public
+ * @desc    Login user
+ * @route   POST /auth/login
+ * @access  Public
  */
-exports.initiateLogin = async (req, res, next) => {
+exports.login = async (req, res) => {
   try {
-    // Check for validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
+    const { phoneNumber, password } = req.body;
+
+    console.log('Login attempt for:', phoneNumber);
+
+    // Validate phone number and password
+    if (!phoneNumber || !password) {
       return res.status(400).json({
         success: false,
-        errors: errors.array()
+        message: 'Please provide phone number and password'
       });
     }
 
-    const { phoneNumber, email, password } = req.body;
+    // Check for user
+    const user = await User.findOne({ phoneNumber }).select('+password');
+    console.log('User found:', user ? 'Yes' : 'No');
 
-    // Find user by phone number or email
-    let user;
-    if (phoneNumber) {
-      user = await User.findOne({ phoneNumber }).select('+password');
-    } else if (email) {
-      user = await User.findOne({ email }).select('+password');
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide email or phone number'
-      });
-    }
-
-    // Check if user exists
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials'
+        message: 'Invalid phone number or password'
       });
     }
 
     // Check if password matches
     const isMatch = await user.matchPassword(password);
+
     if (!isMatch) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials'
+        message: 'Invalid phone number or password'
       });
     }
 
-    // Check if user is verified (skip this check in development mode)
-    if (!user.isVerified && process.env.NODE_ENV !== 'development') {
-      return res.status(401).json({
+    // Update last login time
+    user.lastLogin = Date.now();
+    await user.save({ validateBeforeSave: false });
+
+    // Generate token
+    const token = user.getSignedJwtToken();
+
+    // Determine primary role for UI routing
+    const primaryRole = user.roles.includes('admin') ? 'admin' : 
+                       user.roles.includes('manager') ? 'manager' : 'member';
+
+    // Get user groups (skip population for now to avoid Group model dependency)
+    // await user.populate('memberOfGroups', 'name description status');
+    // await user.populate('managerOfGroups', 'name description status');
+
+    res.status(200).json({
+      success: true,
+      message: 'Login successful',
+      data: {
+        token,
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          phoneNumber: user.phoneNumber,
+          email: user.email,
+          roles: user.roles,
+          primaryRole: primaryRole,
+          memberOfGroups: [],
+          managerOfGroups: []
+        },
+        // Also provide flattened structure for backward compatibility
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phoneNumber: user.phoneNumber,
+        email: user.email,
+        roles: user.roles,
+        primaryRole: primaryRole,
+        memberOfGroups: [],
+        managerOfGroups: []
+      }
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    console.error('Login error stack:', error.stack);
+    res.status(500).json({
+      success: false,
+      message: 'Login failed. Please try again.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+/**
+ * @desc    Send verification code to phone number
+ * @route   POST /auth/send-verification
+ * @access  Public
+ */
+exports.sendVerificationCode = async (req, res) => {
+  try {
+    const { phoneNumber } = req.body;
+    
+    if (!phoneNumber) {
+      return res.status(400).json({
         success: false,
-        message: 'Please verify your phone number before logging in'
+        message: 'Please provide a phone number'
       });
     }
-
-    // Auto-verify users in development mode if not already verified
-    if (!user.isVerified && process.env.NODE_ENV === 'development') {
-      user.isVerified = true;
-      logger.info(`Auto-verifying user ${phoneNumber || email} in development mode`);
-    }
-
-    // In development mode, skip all verification
-    if (process.env.NODE_ENV === 'development') {
-      return exports.login(req, res, next);
-    }
-
-    // Check if MFA is required
-    if (user.mfaEnabled) {
-      // Generate and send OTP code
-      const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-      user.mfaToken = otpCode;
-      user.mfaTokenExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
+    
+    // Check if phone number exists
+    let user = await User.findOne({ phoneNumber });
+    
+    // For development, create a new unverified user if none exists
+    if (!user) {
+      user = new User({
+        firstName: 'Temporary',
+        lastName: 'User',
+        phoneNumber,
+        password: 'temporary123', // Will be replaced during registration
+        isVerified: false
+      });
+      
       await user.save();
-
-      // Log OTP for development purposes
-      logger.info(`MFA code for ${phoneNumber || email}: ${otpCode}`);
-
-      // In production, send OTP via SMS or email based on user preference
-      if (user.preferredMfaMethod === 'sms' && user.phoneNumber) {
-        // sendSms(user.phoneNumber, `Your verification code is: ${otpCode}`);
-        logger.info(`SMS OTP would be sent to ${user.phoneNumber}`);
-      } else if (user.email) {
-        // sendEmail(user.email, 'Your verification code', `Your verification code is: ${otpCode}`);
-        logger.info(`Email OTP would be sent to ${user.email}`);
-      }
-
-      return res.status(200).json({
-        success: true,
-        requiresMfa: true,
-        mfaMethod: user.preferredMfaMethod || 'sms'
-      });
     }
-
-    // Check if NID verification is required for high-risk operations
-    // This is a simplified example - in a real system, you'd have more complex rules
-    if (user.lastLogin && Date.now() - new Date(user.lastLogin).getTime() > 30 * 24 * 60 * 60 * 1000) {
-      // If it's been more than 30 days since last login, require NID verification
-      return res.status(200).json({
-        success: true,
-        requiresNidVerification: true
-      });
-    }
-
-    // If no additional verification needed, proceed with regular login
-    return exports.login(req, res, next);
-  } catch (error) {
-    logger.error('Login initiation error:', error);
-    next(error);
-  }
-};
-
-/**
- * Verify MFA code during login
- * @route POST /api/auth/verify-mfa
- * @access Public
- */
-exports.verifyMfa = async (req, res, next) => {
-  try {
-    const { phoneNumber, email, otpCode } = req.body;
-
-    // Find user by phone number or email
-    let user;
-    if (phoneNumber) {
-      user = await User.findOne({ phoneNumber });
-    } else if (email) {
-      user = await User.findOne({ email });
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide email or phone number'
-      });
-    }
-
-    // Check if user exists
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    // Check if MFA token matches and is not expired
-    if (!user.mfaToken || user.mfaToken !== otpCode || !user.mfaTokenExpiry || user.mfaTokenExpiry < Date.now()) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid or expired verification code'
-      });
-    }
-
-    // Clear MFA token and expiry
-    user.mfaToken = undefined;
-    user.mfaTokenExpiry = undefined;
-    user.lastLogin = Date.now();
+    
+    // Generate verification code
+    const verificationCode = user.generateVerificationCode();
     await user.save();
-
-    // Create token
-    const token = user.generateAuthToken();
-
-    // Get groups the user belongs to
-    const groups = await require('../models/Group').find({
-      'members.userId': user._id
-    }).select('_id name');
-
+    
+    // In a real app, we would send this code via SMS
+    // For development, log it to the console
+    console.log(`Verification code for ${phoneNumber}: ${verificationCode}`);
+    
     res.status(200).json({
       success: true,
-      token,
-      user: {
-        id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        phoneNumber: user.phoneNumber,
-        email: user.email,
-        role: user.role,
-        language: user.language,
-        isVerified: user.isVerified,
-        profileImage: user.profileImage,
-        kycVerified: user.kycVerified,
-        kycLevel: user.kycLevel,
-        mfaEnabled: user.mfaEnabled,
-        groups: groups.map(group => ({ id: group._id, name: group.name })),
-        lastLogin: user.lastLogin
-      }
+      message: 'Verification code sent to your phone number'
     });
   } catch (error) {
-    logger.error('MFA verification error:', error);
-    next(error);
+    console.error('Send verification code error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to send verification code'
+    });
   }
 };
 
 /**
- * Verify National ID during login
- * @route POST /api/auth/verify-nid
- * @access Public
+ * @desc    Verify OTP code
+ * @route   POST /auth/verify-otp
+ * @access  Public
  */
-exports.verifyNid = async (req, res, next) => {
+exports.verifyOtp = async (req, res) => {
   try {
-    const { phoneNumber, email, nidNumber } = req.body;
-
-    // Find user by phone number or email
-    let user;
-    if (phoneNumber) {
-      user = await User.findOne({ phoneNumber });
-    } else if (email) {
-      user = await User.findOne({ email });
-    } else {
+    const { phoneNumber, otpCode } = req.body;
+    
+    if (!phoneNumber || !otpCode) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide email or phone number'
-      });
-    }
-
-    // Check if user exists
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found'
-      });
-    }
-
-    // Check if National ID matches
-    if (!user.nationalId || user.nationalId !== nidNumber) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid National ID number'
-      });
-    }
-
-    // Update last login time
-    user.lastLogin = Date.now();
-    await user.save();
-
-    // Create token
-    const token = user.generateAuthToken();
-
-    // Get groups the user belongs to
-    const groups = await require('../models/Group').find({
-      'members.userId': user._id
-    }).select('_id name');
-
-    res.status(200).json({
-      success: true,
-      token,
-      user: {
-        id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        phoneNumber: user.phoneNumber,
-        email: user.email,
-        role: user.role,
-        language: user.language,
-        isVerified: user.isVerified,
-        profileImage: user.profileImage,
-        kycVerified: user.kycVerified,
-        kycLevel: user.kycLevel,
-        mfaEnabled: user.mfaEnabled,
-        groups: groups.map(group => ({ id: group._id, name: group.name })),
-        lastLogin: user.lastLogin
-      }
-    });
-  } catch (error) {
-    logger.error('NID verification error:', error);
-    next(error);
-  }
-};
-
-/**
- * Login user and return JWT token
- * @route POST /api/auth/login
- * @access Public
- */
-exports.login = async (req, res, next) => {
-  try {
-    // Check for validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        errors: errors.array()
-      });
-    }
-
-    const { phoneNumber, email, password } = req.body;
-
-    // Find user by phone number or email
-    let user;
-    if (phoneNumber) {
-      user = await User.findOne({ phoneNumber }).select('+password');
-    } else if (email) {
-      user = await User.findOne({ email }).select('+password');
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide email or phone number'
-      });
-    }
-
-    // Check if user exists
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid credentials'
-      });
-    }
-
-    // Check if password matches
-    const isMatch = await user.matchPassword(password);
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid credentials'
-      });
-    }
-
-    // Check if user is verified (skip this check in development mode)
-    if (!user.isVerified && process.env.NODE_ENV !== 'development') {
-      return res.status(401).json({
-        success: false,
-        message: 'Please verify your phone number before logging in'
+        message: 'Please provide phone number and verification code'
       });
     }
     
-    // Auto-verify users in development mode if not already verified
-    if (!user.isVerified && process.env.NODE_ENV === 'development') {
-      user.isVerified = true;
-      logger.info(`Auto-verifying user ${phoneNumber || email} in development mode`);
-    }
-
-    // Update last login time
-    user.lastLogin = Date.now();
-    await user.save();
-
-    // Create token
-    const token = user.generateAuthToken();
-
-    // Remove sensitive fields
-    user.password = undefined;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpire = undefined;
-    user.verificationToken = undefined;
-    user.mfaToken = undefined;
-    user.mfaTokenExpiry = undefined;
-
-    // Get groups the user belongs to
-    const groups = await require('../models/Group').find({
-      'members.userId': user._id
-    }).select('_id name');
-
-    res.status(200).json({
-      success: true,
-      token,
-      user: {
-        id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        phoneNumber: user.phoneNumber,
-        email: user.email,
-        role: user.role,
-        language: user.language,
-        isVerified: user.isVerified,
-        profileImage: user.profileImage,
-        kycVerified: user.kycVerified,
-        kycLevel: user.kycLevel,
-        mfaEnabled: user.mfaEnabled,
-        groups: groups.map(group => ({ id: group._id, name: group.name })),
-        lastLogin: user.lastLogin
-      }
-    });
-  } catch (error) {
-    logger.error('Login error:', error);
-    next(error);
-  }
-};
-
-/**
- * Verify user's phone number
- * @route POST /api/auth/verify
- * @access Public
- */
-exports.verifyUser = async (req, res, next) => {
-  try {
-    const { phoneNumber, verificationToken } = req.body;
-
     // Find user by phone number
-    const user = await User.findOne({ phoneNumber });
+    const user = await User.findOne({ phoneNumber }).select('+verificationCode +verificationExpires');
     
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: 'No user found with this phone number'
       });
     }
-
-    // Check if verification token matches
-    if (user.verificationToken !== verificationToken) {
+    
+    // Check if verification code exists and is not expired
+    if (!user.verificationCode || !user.verificationExpires) {
+      return res.status(400).json({
+        success: false,
+        message: 'No verification code requested or code expired'
+      });
+    }
+    
+    // Check if code is expired
+    if (user.verificationExpires < Date.now()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Verification code has expired'
+      });
+    }
+    
+    // For development, accept any code
+    if (process.env.NODE_ENV === 'development') {
+      // Mark user as verified
+      user.isVerified = true;
+      user.verificationCode = undefined;
+      user.verificationExpires = undefined;
+      
+      await user.save();
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Phone number verified successfully'
+      });
+    }
+    
+    // Check if code matches
+    const isMatch = await bcrypt.compare(otpCode, user.verificationCode);
+    
+    if (!isMatch) {
       return res.status(400).json({
         success: false,
         message: 'Invalid verification code'
       });
     }
-
-    // Mark user as verified and clear verification token
+    
+    // Mark user as verified
     user.isVerified = true;
-    user.verificationToken = undefined;
+    user.verificationCode = undefined;
+    user.verificationExpires = undefined;
+    
     await user.save();
-
+    
     res.status(200).json({
       success: true,
       message: 'Phone number verified successfully'
     });
   } catch (error) {
-    logger.error('Verification error:', error);
-    next(error);
+    console.error('Verify OTP error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to verify code'
+    });
   }
 };
 
 /**
- * Request password reset token
- * @route POST /api/auth/forgot-password
- * @access Public
+ * @desc    Get current logged in user
+ * @route   GET /auth/me
+ * @access  Private
  */
-exports.forgotPassword = async (req, res, next) => {
+exports.getMe = async (req, res) => {
   try {
-    const { phoneNumber, email } = req.body;
+    // Get user data (skip group population for now to avoid Group model dependency)
+    const user = await User.findById(req.user.id);
 
-    // Find user by phone number or email
-    let user;
-    if (phoneNumber) {
-      user = await User.findOne({ phoneNumber });
-    } else if (email) {
-      user = await User.findOne({ email });
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide email or phone number'
-      });
-    }
+    res.status(200).json({
+      success: true,
+      data: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phoneNumber: user.phoneNumber,
+        email: user.email,
+        memberOfGroups: [],
+        managerOfGroups: [],
+        language: user.language,
+        currency: user.currency,
+        profileImage: user.profileImage,
+        createdAt: user.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Get me error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get user data'
+    });
+  }
+};
+
+/**
+ * @desc    Update user profile
+ * @route   PUT /auth/profile
+ * @access  Private
+ */
+exports.updateProfile = async (req, res) => {
+  try {
+    const { firstName, lastName, email, language, currency } = req.body;
     
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'No account found with this contact information'
-      });
-    }
-
-    // Generate reset token
-    const resetToken = user.generateResetPasswordToken();
-    await user.save();
-
-    // In a real application, send SMS or email with reset token
-    // For now, just log it
-    logger.info(`Reset token for ${phoneNumber || email}: ${resetToken}`);
-
-    res.status(200).json({
-      success: true,
-      message: 'Password reset token sent'
-    });
-  } catch (error) {
-    logger.error('Forgot password error:', error);
-    next(error);
-  }
-};
-
-/**
- * Reset password
- * @route POST /api/auth/reset-password
- * @access Public
- */
-exports.resetPassword = async (req, res, next) => {
-  try {
-    const { resetToken, password } = req.body;
-
-    // Hash the token from params
-    const hashedToken = crypto
-      .createHash('sha256')
-      .update(resetToken)
-      .digest('hex');
-
-    // Find user by hashed token and check if token is still valid
-    const user = await User.findOne({
-      resetPasswordToken: hashedToken,
-      resetPasswordExpire: { $gt: Date.now() }
-    });
-
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid or expired token'
-      });
-    }
-
-    // Set new password and clear reset fields
-    user.password = password;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpire = undefined;
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Password reset successful'
-    });
-  } catch (error) {
-    logger.error('Reset password error:', error);
-    next(error);
-  }
-};
-
-/**
- * Get current user info
- * @route GET /api/auth/me
- * @access Private
- */
-exports.getCurrentUser = async (req, res, next) => {
-  try {
-    // User is already attached to req by auth middleware
-    const user = await User.findById(req.user.id).select('-password -verificationToken -resetPasswordToken -resetPasswordExpire -mfaToken -mfaTokenExpiry');
+    const updateFields = {};
+    if (firstName) updateFields.firstName = firstName;
+    if (lastName) updateFields.lastName = lastName;
+    if (email) updateFields.email = email;
+    if (language) updateFields.language = language;
+    if (currency) updateFields.currency = currency;
+    
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      updateFields,
+      { new: true, runValidators: true }
+    );
     
     if (!user) {
       return res.status(404).json({
@@ -646,247 +429,51 @@ exports.getCurrentUser = async (req, res, next) => {
         message: 'User not found'
       });
     }
-
-    // Get groups the user belongs to
-    const groups = await require('../models/Group').find({
-      'members.userId': user._id
-    }).select('_id name');
-
-    // Add groups to user object
-    const userWithGroups = user.toObject();
-    userWithGroups.groups = groups.map(group => ({ id: group._id, name: group.name }));
-
-    res.status(200).json({
-      success: true,
-      user: userWithGroups
-    });
-  } catch (error) {
-    logger.error('Get current user error:', error);
-    next(error);
-  }
-};
-
-/**
- * Enable MFA for a user
- * @route POST /api/auth/enable-mfa
- * @access Private
- */
-exports.enableMfa = async (req, res, next) => {
-  try {
-    const { method } = req.body;
-    
-    // Validate method
-    if (method !== 'sms' && method !== 'email') {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid MFA method. Must be either "sms" or "email"'
-      });
-    }
-
-    // If email method is chosen, ensure user has an email
-    if (method === 'email' && !req.user.email) {
-      return res.status(400).json({
-        success: false,
-        message: 'You must add an email address to your account to use email MFA'
-      });
-    }
-
-    // Update user
-    const user = await User.findById(req.user.id);
-    user.mfaEnabled = true;
-    user.preferredMfaMethod = method;
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-      message: `MFA enabled successfully using ${method}`
-    });
-  } catch (error) {
-    logger.error('Enable MFA error:', error);
-    next(error);
-  }
-};
-
-/**
- * Disable MFA for a user
- * @route POST /api/auth/disable-mfa
- * @access Private
- */
-exports.disableMfa = async (req, res, next) => {
-  try {
-    const { verificationCode } = req.body;
-    
-    // For security, require verification before disabling MFA
-    const user = await User.findById(req.user.id);
-    
-    // In a real app, you would verify the code
-    // For this example, we'll just check if it's provided
-    if (!verificationCode) {
-      return res.status(400).json({
-        success: false,
-        message: 'Verification code is required'
-      });
-    }
-
-    // Update user
-    user.mfaEnabled = false;
-    user.preferredMfaMethod = undefined;
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'MFA disabled successfully'
-    });
-  } catch (error) {
-    logger.error('Disable MFA error:', error);
-    next(error);
-  }
-};
-
-/**
- * Submit KYC information
- * @route POST /api/auth/kyc-verification
- * @access Private
- */
-exports.submitKyc = async (req, res, next) => {
-  try {
-    const { nidNumber, dateOfBirth, fullName } = req.body;
-    
-    // In a real app, you would verify this information with an external service
-    // For this example, we'll just update the user's KYC status
-    
-    const user = await User.findById(req.user.id);
-    user.nationalId = nidNumber;
-    user.dateOfBirth = dateOfBirth;
-    user.kycVerified = true;
-    user.kycLevel = 'full';
-    user.kycSubmissionDate = Date.now();
-    
-    // Handle document upload if included
-    if (req.file) {
-      user.kycDocuments = [{
-        type: 'national_id',
-        fileUrl: req.file.path,
-        uploadDate: Date.now(),
-        verified: process.env.NODE_ENV === 'development' // Auto-verify in dev mode
-      }];
-    }
-    
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'KYC information submitted successfully',
-      data: {
-        kycVerified: user.kycVerified,
-        kycLevel: user.kycLevel
-      }
-    });
-  } catch (error) {
-    logger.error('KYC submission error:', error);
-    next(error);
-  }
-};
-
-/**
- * Get KYC status
- * @route GET /api/auth/kyc-status
- * @access Private
- */
-exports.getKycStatus = async (req, res, next) => {
-  try {
-    const user = await User.findById(req.user.id).select('kycVerified kycLevel kycSubmissionDate nationalId');
-    
-    res.status(200).json({
-      success: true,
-      data: {
-        kycVerified: user.kycVerified,
-        kycLevel: user.kycLevel,
-        kycSubmissionDate: user.kycSubmissionDate,
-        hasNationalId: !!user.nationalId
-      }
-    });
-  } catch (error) {
-    logger.error('Get KYC status error:', error);
-    next(error);
-  }
-};
-
-/**
- * Update user profile
- * @route PUT /api/auth/profile
- * @access Private
- */
-exports.updateProfile = async (req, res, next) => {
-  try {
-    const { firstName, lastName, language, email, phoneNumber } = req.body;
-    
-    // Find user
-    const user = await User.findById(req.user.id);
-    
-    // Update fields if provided
-    if (firstName) user.firstName = firstName;
-    if (lastName) user.lastName = lastName;
-    if (language) user.language = language;
-    
-    // Check if email is being updated and is not already in use
-    if (email && email !== user.email) {
-      const emailExists = await User.findOne({ email, _id: { $ne: user._id } });
-      if (emailExists) {
-        return res.status(409).json({
-          success: false,
-          message: 'Email is already in use'
-        });
-      }
-      user.email = email;
-    }
-    
-    // Check if phone is being updated and is not already in use
-    if (phoneNumber && phoneNumber !== user.phoneNumber) {
-      const phoneExists = await User.findOne({ phoneNumber, _id: { $ne: user._id } });
-      if (phoneExists) {
-        return res.status(409).json({
-          success: false,
-          message: 'Phone number is already in use'
-        });
-      }
-      user.phoneNumber = phoneNumber;
-    }
-    
-    await user.save();
     
     res.status(200).json({
       success: true,
       message: 'Profile updated successfully',
-      user: {
+      data: {
         id: user._id,
         firstName: user.firstName,
         lastName: user.lastName,
         phoneNumber: user.phoneNumber,
         email: user.email,
-        language: user.language
+        language: user.language,
+        currency: user.currency
       }
     });
   } catch (error) {
-    logger.error('Update profile error:', error);
-    next(error);
+    console.error('Update profile error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update profile'
+    });
   }
 };
 
 /**
- * Change password
- * @route POST /api/auth/change-password
- * @access Private
+ * @desc    Change password
+ * @route   PUT /auth/change-password
+ * @access  Private
  */
-exports.changePassword = async (req, res, next) => {
+exports.changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     
-    // Find user with password
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide current password and new password'
+      });
+    }
+    
+    // Get user with password
     const user = await User.findById(req.user.id).select('+password');
     
-    // Check if current password matches
+    // Check current password
     const isMatch = await user.matchPassword(currentPassword);
+    
     if (!isMatch) {
       return res.status(401).json({
         success: false,
@@ -894,53 +481,129 @@ exports.changePassword = async (req, res, next) => {
       });
     }
     
-    // Update password
+    // Set new password
     user.password = newPassword;
     await user.save();
     
     res.status(200).json({
       success: true,
-      message: 'Password changed successfully'
+      message: 'Password updated successfully'
     });
   } catch (error) {
-    logger.error('Change password error:', error);
-    next(error);
-  }
-};
-
-/**
- * Validate token
- * @route GET /api/auth/validate-token
- * @access Private
- */
-exports.validateToken = async (req, res, next) => {
-  try {
-    // If middleware passed, token is valid
-    res.status(200).json({
-      success: true,
-      valid: true
+    console.error('Change password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to change password'
     });
-  } catch (error) {
-    logger.error('Token validation error:', error);
-    next(error);
   }
-};
+}; 
 
 /**
- * Logout (invalidate token)
- * @route POST /api/auth/logout
- * @access Private
+ * @desc    Get user roles
+ * @route   GET /auth/roles
+ * @access  Private
  */
-exports.logout = async (req, res, next) => {
+exports.getUserRoles = async (req, res) => {
   try {
-    // In a real app with a token blacklist, you would add the token to the blacklist here
+    const user = await User.findById(req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
     
     res.status(200).json({
       success: true,
-      message: 'Logged out successfully'
+      data: {
+        roles: user.roles || ['member'],
+        memberOfGroups: user.memberOfGroups || [],
+        managerOfGroups: user.managerOfGroups || []
+      }
     });
   } catch (error) {
-    logger.error('Logout error:', error);
-    next(error);
+    console.error('Get user roles error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get user roles'
+    });
+  }
+};
+
+/**
+ * @desc    Request role upgrade
+ * @route   POST /auth/roles/request
+ * @access  Private
+ */
+exports.requestRoleUpgrade = async (req, res) => {
+  try {
+    const { requestedRole } = req.body;
+    
+    if (!requestedRole) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please specify the requested role'
+      });
+    }
+    
+    // Validate role
+    if (!['member', 'manager'].includes(requestedRole)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid role requested'
+      });
+    }
+    
+    const user = await User.findById(req.user.id);
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+    
+    // Check if user already has the role
+    if (user.roles.includes(requestedRole)) {
+      return res.status(400).json({
+        success: false,
+        message: `You already have the ${requestedRole} role`
+      });
+    }
+    
+    // In production, this would create a request for admin approval
+    // For now, we'll simulate the process
+    
+    // For development mode, auto-approve
+    if (process.env.NODE_ENV === 'development') {
+      // Add the role if not already present
+      if (!user.roles.includes(requestedRole)) {
+        user.roles.push(requestedRole);
+        await user.save();
+      }
+      
+      return res.status(200).json({
+        success: true,
+        message: `Role ${requestedRole} granted automatically in development mode`,
+        data: {
+          roles: user.roles
+        }
+      });
+    }
+    
+    // For production, create a notification for admins
+    // This would be handled by a notification service in a real app
+    
+    res.status(200).json({
+      success: true,
+      message: `Your request for ${requestedRole} role has been submitted for approval`
+    });
+  } catch (error) {
+    console.error('Request role upgrade error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process role upgrade request'
+    });
   }
 }; 

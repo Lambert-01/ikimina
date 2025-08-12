@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const managerController = require('../controllers/managerController');
-const { authMiddleware, authorize } = require('../../middleware/auth');
+const { protect, authorize } = require('../../middleware/auth');
 
 // Protect all routes
-router.use(authMiddleware);
+router.use(protect);
 
 // In development mode, don't strictly enforce manager role
 if (process.env.NODE_ENV === 'development') {

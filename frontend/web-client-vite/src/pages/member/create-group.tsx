@@ -5,6 +5,7 @@ import { ArrowLeft } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import CreateGroupWizard from '../../components/groups/CreateGroupWizard';
 import type { GroupFormData } from '../../components/groups/CreateGroupWizard';
+import { groupService } from '../../services';
 
 const CreateGroupPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -13,55 +14,52 @@ const CreateGroupPage: React.FC = () => {
   const handleCreateGroup = async (formData: GroupFormData) => {
     try {
       setIsSubmitting(true);
-      
-      // Transform the form data to match the API expectations
-      const apiData = {
+      // Build payload to match backend /api/groups
+      const payload = {
         name: formData.name,
         description: formData.description,
+        groupType: 'savings',
+        contributionSettings: {
+          amount: formData.contributionAmount,
+          frequency: formData.contributionFrequency,
+          dueDay: formData.contributionDeadline,
+          penaltyType: 'none'
+        },
+        loanSettings: {
+          enabled: formData.enableLoans,
+          interestRate: formData.interestRate,
+          maxLoanMultiplier: Math.ceil(formData.maxLoanPercentage / 10),
+          maxDurationMonths: formData.maxLoanTerm,
+          requiresApproval: formData.requiresVoting,
+          minimumContributions: 1
+        },
+        meetingSettings: {
+          frequency: formData.contributionFrequency,
+          time: '14:00',
+          location: 'Virtual'
+        },
         visibility: formData.visibility,
-        contributionAmount: formData.contributionAmount,
-        contributionFrequency: formData.contributionFrequency,
-        contributionDeadline: formData.contributionDeadline,
-        minMembers: formData.minMembers,
-        maxMembers: formData.maxMembers,
-        payoutMechanism: 'rotation', // Default mechanism
-        rules: {
-          loanEnabled: formData.enableLoans,
-          loanInterestRate: formData.interestRate,
-          maxLoanPercentage: formData.maxLoanPercentage,
-          maxLoanTerm: formData.maxLoanTerm,
-          requiresVoting: formData.requiresVoting,
-          voteThreshold: formData.votingThreshold,
-          enableKYC: formData.enableKYC
-        }
-      };
+        invitations: formData.invitations
+      } as any;
 
-      // In a real app, this would be an API call
-      // For demo purposes, we'll simulate a successful creation
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Handle file upload separately if there's an icon
-      if (formData.icon) {
-        // In a real app, this would upload the file to a server
-        console.log('Uploading icon:', formData.icon.name);
+      const resp = await groupService.createGroup(payload);
+      if (resp?.success) {
+        // Show detailed success message with approval information
+        toast.success(
+          'Group created successfully! Your group has been submitted for admin approval.',
+          { autoClose: 5000 }
+        );
+        
+        // Navigate to my groups page where they can track status
+        navigate('/member/my-groups', { 
+          state: { 
+            message: 'Your group has been submitted for approval. You will be notified once it\'s reviewed.',
+            newGroupId: resp.data?.id 
+          }
+        });
+      } else {
+        throw new Error(resp?.message || 'Failed to create group');
       }
-      
-      // Handle invitations
-      if (formData.invitations.length > 0) {
-        // In a real app, this would send invitations through the API
-        console.log('Sending invitations to:', formData.invitations);
-      }
-      
-      // Handle admin contacts
-      if (formData.adminContacts.length > 0) {
-        // In a real app, this would register admin contacts
-        console.log('Registering admin contacts:', formData.adminContacts);
-      }
-      
-      toast.success('Group created successfully! Awaiting approval.');
-      
-      // Navigate to the group status page
-      navigate('/dashboard/member/group-status');
     } catch (error) {
       console.error('Error creating group:', error);
       toast.error('Failed to create group. Please try again.');
@@ -76,7 +74,7 @@ const CreateGroupPage: React.FC = () => {
         <Button
           variant="ghost"
           className="mr-4"
-          onClick={() => navigate('/dashboard/member')}
+          onClick={() => navigate('/member')}
         >
           <ArrowLeft className="h-5 w-5 mr-1" />
           Back

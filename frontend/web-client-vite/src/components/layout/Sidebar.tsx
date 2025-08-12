@@ -1,252 +1,385 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Home,
   Users,
-  DollarSign,
-  CreditCard,
-  Bell,
-  Settings,
-  BarChart3,
-  LogOut,
-  X,
-  ChevronDown,
-  ChevronRight,
-  ChevronLeft,
-  UserPlus,
-  PlusCircle,
-  FileText,
+  Wallet,
+  BarChart,
   Calendar,
-  LifeBuoy,
-  UserCog,
+  Settings,
+  CreditCard,
+  PlusCircle,
+  LogOut,
+  ChevronRight,
+  ChevronDown,
+  CircleDollarSign,
   Building,
-  PiggyBank,
-  Shield
+  FileText,
+  MessageCircle
 } from 'lucide-react';
-import useAuthStore from '../../store/authStore';
+import { cn } from '../../lib/utils';
+
+// Types
+interface NavItemProps {
+  icon: React.ReactNode;
+  label: string;
+  path: string;
+  collapsed?: boolean;
+  active?: boolean;
+  badge?: number | string;
+  badgeColor?: string;
+  onClick?: () => void;
+}
+
+interface NavGroupProps {
+  icon: React.ReactNode;
+  label: string;
+  children: React.ReactNode;
+  collapsed?: boolean;
+  defaultOpen?: boolean;
+}
 
 interface SidebarProps {
-  isOpen: boolean;
-  closeSidebar: () => void;
-  userRole?: string;
+  collapsed: boolean;
+  user: any | null;
+  pathname: string;
+  onLogout: () => void;
+  isMobile?: boolean;
+  closeMobileMenu?: () => void;
 }
 
-interface NavItem {
-  name: string;
-  href: string;
-  icon: React.ElementType;
-  badge?: string;
-  badgeColor?: string;
-  section?: string;
-}
+// NavItem component for regular menu items
+const NavItem: React.FC<NavItemProps> = ({ 
+  icon, 
+  label, 
+  path, 
+  collapsed = false, 
+  active = false,
+  badge,
+  badgeColor = 'bg-primary-500',
+  onClick
+}) => {
+  return (
+    <Link
+      to={path}
+      className={cn(
+        "flex items-center py-3 px-4 rounded-md transition-colors",
+        active 
+          ? "bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-400" 
+          : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/60",
+        collapsed ? "justify-center" : "justify-between"
+      )}
+      onClick={onClick}
+    >
+      <div className="flex items-center">
+        <div className={cn(
+          "flex-shrink-0",
+          collapsed ? "" : "mr-3"
+        )}>
+          {icon}
+        </div>
+        {!collapsed && <span className="text-sm font-medium">{label}</span>}
+      </div>
+      
+      {!collapsed && badge && (
+        <span className={cn(
+          "px-2 py-0.5 text-xs font-medium text-white rounded-full",
+          badgeColor
+        )}>
+          {badge}
+        </span>
+      )}
+      
+      {collapsed && badge && (
+        <span className={cn(
+          "absolute top-0 right-0 h-5 w-5 text-xs flex items-center justify-center font-medium text-white rounded-full -mt-1 -mr-1",
+          badgeColor
+        )}>
+          {badge}
+        </span>
+      )}
+    </Link>
+  );
+};
 
-const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar, userRole = 'member' }) => {
-  const [collapsed, setCollapsed] = useState(false);
-  const { logout } = useAuthStore();
-  const location = useLocation();
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    'My Groups': true,
-    'Financial': true,
-    'Management': true
-  });
-
-  // Define navigation based on user role
-  const getNavigation = (): NavItem[] => {
-    const baseNavigation = [
-      { name: 'Dashboard', href: `/dashboard/${userRole}`, icon: Home, section: 'Main' },
-    ];
-    
-    if (userRole === 'manager') {
-      return [
-        ...baseNavigation,
-        { name: 'My Managed Groups', href: '/dashboard/manager/groups', icon: Building, section: 'Management', badge: '3' },
-        { name: 'Members', href: '/dashboard/manager/members', icon: Users, section: 'Management' },
-        { name: 'Contributions', href: '/dashboard/manager/contributions', icon: DollarSign, section: 'Financial' },
-        { name: 'Loans', href: '/dashboard/manager/loans', icon: CreditCard, section: 'Financial', badge: '2', badgeColor: 'bg-amber-500' },
-        { name: 'Meetings', href: '/dashboard/manager/meetings', icon: Calendar, section: 'Management' },
-        { name: 'Reports', href: '/dashboard/manager/reports', icon: FileText, section: 'Financial' },
-        { name: 'Notifications', href: '/dashboard/manager/notifications', icon: Bell, section: 'Main', badge: '5', badgeColor: 'bg-red-500' },
-        { name: 'Settings', href: '/dashboard/manager/settings', icon: Settings, section: 'Main' },
-      ];
-    } else if (userRole === 'admin') {
-      return [
-        ...baseNavigation,
-        { name: 'User Management', href: '/dashboard/admin/users', icon: UserCog, section: 'Management' },
-        { name: 'Group Management', href: '/dashboard/admin/groups', icon: Building, section: 'Management' },
-        { name: 'System Settings', href: '/dashboard/admin/settings', icon: Settings, section: 'Main' },
-        { name: 'Reports & Analytics', href: '/dashboard/admin/reports', icon: BarChart3, section: 'Financial' },
-        { name: 'Compliance', href: '/dashboard/admin/compliance', icon: Shield, section: 'Management' },
-        { name: 'Support Tickets', href: '/dashboard/admin/support', icon: LifeBuoy, section: 'Main' },
-      ];
-    } else {
-      return [
-        ...baseNavigation,
-        { name: 'My Groups', href: '/dashboard/member/group', icon: Users, section: 'My Groups', badge: '2' },
-        { name: 'Contributions', href: '/dashboard/member/contributions', icon: DollarSign, section: 'Financial' },
-        { name: 'Loans', href: '/dashboard/member/loans', icon: CreditCard, section: 'Financial' },
-        { name: 'Savings', href: '/dashboard/member/savings', icon: PiggyBank, section: 'Financial' },
-        { name: 'Reports', href: '/dashboard/member/reports', icon: FileText, section: 'Financial' },
-        { name: 'Meetings', href: '/dashboard/member/meetings', icon: Calendar, section: 'My Groups' },
-        { name: 'Notifications', href: '/dashboard/member/notifications', icon: Bell, section: 'Main', badge: '3', badgeColor: 'bg-blue-500' },
-        { name: 'Create Group', href: '/dashboard/member/create-group', icon: PlusCircle, section: 'My Groups' },
-        { name: 'Join Group', href: '/dashboard/member/join-group', icon: UserPlus, section: 'My Groups' },
-        { name: 'Settings', href: '/dashboard/member/settings', icon: Settings, section: 'Main' },
-      ];
-    }
-  };
-
-  const navigation = getNavigation();
+// NavGroup component for expandable sections
+const NavGroup: React.FC<NavGroupProps> = ({ 
+  icon, 
+  label, 
+  children, 
+  collapsed = false,
+  defaultOpen = false
+}) => {
+  const [open, setOpen] = useState(defaultOpen);
   
-  // Group navigation items by section
-  const groupedNavigation = navigation.reduce<Record<string, NavItem[]>>((acc, item) => {
-    const section = item.section || 'Main';
-    if (!acc[section]) {
-      acc[section] = [];
+  // Don't allow toggling in collapsed mode
+  const toggleOpen = () => {
+    if (!collapsed) {
+      setOpen(!open);
     }
-    acc[section].push(item);
-    return acc;
-  }, {});
-
-  const toggleSection = (section: string) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
-  };
-
-  const handleLogout = () => {
-    logout();
-    // Redirect is handled automatically by protected routes
   };
 
   return (
-    <>
-      {/* Mobile sidebar backdrop */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black bg-opacity-50 lg:hidden"
-          onClick={closeSidebar}
-          aria-hidden="true"
-        />
-      )}
-
-      {/* Sidebar */}
-      <div
-        className={`fixed top-0 left-0 z-50 h-full bg-white border-r border-gray-200 transition-transform duration-300 ease-in-out transform ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0 lg:static lg:z-auto ${
-          collapsed ? 'w-20' : 'w-72'
-        }`}
+    <div>
+      <button
+        onClick={toggleOpen}
+        className={cn(
+          "w-full flex items-center py-3 px-4 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/60 transition-colors",
+          collapsed ? "justify-center" : "justify-between"
+        )}
       >
-        <div className="flex flex-col h-full">
-          {/* Sidebar header */}
-          <div className="flex items-center justify-between h-16 px-4 border-b bg-gradient-to-r from-primary-600 to-primary-700 text-white">
-            <Link to="/" className="flex items-center">
-              {!collapsed && (
-                <span className="text-xl font-bold">IKIMINA</span>
-              )}
-              {collapsed && <span className="text-xl font-bold">IK</span>}
-            </Link>
-            <button
-              onClick={() => setCollapsed(!collapsed)}
-              className="p-1 rounded-md text-white hover:bg-primary-500 focus:outline-none hidden lg:block"
-            >
-              {collapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
-            </button>
-            <button
-              onClick={closeSidebar}
-              className="p-1 rounded-md text-white hover:bg-primary-500 focus:outline-none lg:hidden"
-            >
-              <X size={20} />
-            </button>
+        <div className="flex items-center">
+    <div className={cn(
+            "flex-shrink-0",
+            collapsed ? "" : "mr-3"
+    )}>
+            {icon}
           </div>
+          {!collapsed && <span className="text-sm font-medium">{label}</span>}
+        </div>
+        {!collapsed && (open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />)}
+      </button>
+      
+      {!collapsed && open && (
+        <div className="pl-9 pr-4 mt-1 space-y-1">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+};
 
-          {/* Role selector */}
+// Sidebar component
+const Sidebar: React.FC<SidebarProps> = ({ 
+  collapsed, 
+  user, 
+  pathname,
+  onLogout,
+  isMobile = false,
+  closeMobileMenu
+}) => {
+  const location = useLocation();
+  
+  // Get groups from user object
+  const memberGroups = user?.memberGroups || [];
+  const managedGroups = user?.managedGroups || [];
+  
+  // Check if path is active
+  const isActive = (path: string) => pathname.startsWith(path);
+  
+  // Handle navigation on mobile
+  const handleNavigation = () => {
+    if (isMobile && closeMobileMenu) {
+      closeMobileMenu();
+    }
+  };
+  
+  const isManager = managedGroups.length > 0;
+  const isMember = memberGroups.length > 0;
+  
+  return (
+    <div className="h-full overflow-y-auto bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
+      <div className="px-3 py-4">
+        {/* Member Section */}
+        <div className="mb-6">
           {!collapsed && (
-            <div className="px-4 py-3 border-b bg-gray-50">
-              <select
-                className="w-full px-3 py-2 text-sm border rounded-md bg-white shadow-sm focus:ring-primary-500 focus:border-primary-500"
-                defaultValue={userRole}
-                onChange={(e) => {
-                  // In a real app, this would switch between roles if the user has multiple roles
-                  window.location.href = `/dashboard/${e.target.value}`;
-                }}
-              >
-                <option value="member">View as Member</option>
-                <option value="manager">View as Manager</option>
-                {/* Admin option would only show for admin users */}
-              </select>
-            </div>
+            <h3 className="px-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+              Member
+            </h3>
           )}
-
-          {/* Navigation */}
-          <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto">
-            {Object.entries(groupedNavigation).map(([section, items]) => (
-              <div key={section} className="mb-4">
-                {!collapsed && section !== 'Main' && (
-                  <div 
-                    className="flex items-center justify-between px-2 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer"
-                    onClick={() => toggleSection(section)}
-                  >
-                    <span>{section}</span>
-                    <ChevronDown 
-                      size={14} 
-                      className={`transform transition-transform ${expandedSections[section] ? 'rotate-0' : '-rotate-90'}`} 
-                    />
-                  </div>
-                )}
-                
-                <div className={`space-y-1 ${!expandedSections[section] && !collapsed ? 'hidden' : ''}`}>
-                  {items.map((item) => {
-                    const isActive = location.pathname === item.href;
-                    return (
-                      <Link
-                        key={item.name}
-                        to={item.href}
-                        className={`flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md ${
-                          isActive
-                            ? 'bg-primary-100 text-primary-700'
-                            : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                        onClick={closeSidebar}
-                      >
-                        <div className="flex items-center">
-                          <item.icon
-                            className={`mr-3 h-5 w-5 ${
-                              isActive ? 'text-primary-500' : 'text-gray-400'
-                            }`}
-                          />
-                          {!collapsed && <span>{item.name}</span>}
-                        </div>
-                        
-                        {!collapsed && item.badge && (
-                          <span className={`${item.badgeColor || 'bg-primary-500'} text-white text-xs font-bold px-2 py-0.5 rounded-full`}>
-                            {item.badge}
-                          </span>
-                        )}
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </nav>
-
-          {/* Logout button */}
-          <div className="p-4 border-t">
-            <button
-              onClick={handleLogout}
-              className={`flex items-center w-full px-3 py-2 text-sm font-medium text-red-600 rounded-md hover:bg-red-50 ${
-                collapsed ? 'justify-center' : ''
-              }`}
+          
+          <nav className="space-y-1">
+            <NavItem
+              icon={<Home className="h-5 w-5" />}
+              label="Dashboard"
+              path="/dashboard"
+              active={isActive('/dashboard')}
+              collapsed={collapsed}
+              onClick={handleNavigation}
+            />
+            
+            <NavGroup
+              icon={<Users className="h-5 w-5" />}
+              label="My Groups"
+              collapsed={collapsed}
+              defaultOpen={isActive('/member/group')}
             >
-              <LogOut className="w-5 h-5 mr-2" />
-              {!collapsed && <span>Logout</span>}
-            </button>
+              {/* List member groups */}
+                              {memberGroups.length > 0 ? (
+                memberGroups.map((group: string, index: number) => (
+                      <Link
+                    key={group} 
+                    to={`/dashboard/group/${group}`}
+                    className="flex items-center py-2 pl-2 rounded-md text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/60"
+                    onClick={handleNavigation}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-green-500 mr-2"></span>
+                    {`Group ${index + 1}`}
+                      </Link>
+                ))
+              ) : (
+                <div className="text-xs text-gray-500 dark:text-gray-400 py-2">No groups yet</div>
+                )}
+              
+                <Link
+                to="/dashboard/my-groups"
+                className="flex items-center py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+                onClick={handleNavigation}
+              >
+                <Users className="h-4 w-4 mr-2" />
+                View All Groups
+                </Link>
+                
+                <Link
+                to="/dashboard/create-group"
+                className="flex items-center py-2 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
+                onClick={handleNavigation}
+              >
+                <PlusCircle className="h-4 w-4 mr-2" />
+                Create Group
+                </Link>
+                
+                <Link
+                to="/dashboard/join-group"
+                className="flex items-center py-2 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
+                onClick={handleNavigation}
+              >
+                <PlusCircle className="h-4 w-4 mr-2" />
+                Join Group
+                </Link>
+            </NavGroup>
+            
+            <NavItem
+              icon={<CreditCard className="h-5 w-5" />}
+              label="Contributions"
+              path="/dashboard/contributions"
+              active={isActive('/dashboard/contributions')}
+              collapsed={collapsed}
+              onClick={handleNavigation}
+            />
+            
+            <NavItem
+              icon={<Wallet className="h-5 w-5" />}
+              label="Loans"
+              path="/dashboard/loans"
+              active={isActive('/dashboard/loans')}
+              collapsed={collapsed}
+              badge={2}
+              badgeColor="bg-amber-500"
+              onClick={handleNavigation}
+            />
+            
+            <NavItem
+              icon={<Calendar className="h-5 w-5" />}
+              label="Meetings"
+              path="/dashboard/meetings"
+              active={isActive('/dashboard/meetings')}
+              collapsed={collapsed}
+              badge={1}
+              badgeColor="bg-blue-500"
+              onClick={handleNavigation}
+            />
+            
+            <NavItem
+              icon={<BarChart className="h-5 w-5" />}
+              label="Reports"
+              path="/dashboard/reports"
+              active={isActive('/dashboard/reports')}
+              collapsed={collapsed}
+              onClick={handleNavigation}
+            />
+            
+            <NavItem
+              icon={<MessageCircle className="h-5 w-5" />}
+              label="Messages"
+              path="/dashboard/messages"
+              active={isActive('/dashboard/messages')}
+              collapsed={collapsed}
+              badge={3}
+              badgeColor="bg-red-500"
+              onClick={handleNavigation}
+            />
+          </nav>
+        </div>
+        
+        {/* Manager Section - Only show if user manages any groups */}
+        {isManager && (
+          <div className="mb-6">
+            {!collapsed && (
+              <h3 className="px-4 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+                Manager
+              </h3>
+            )}
+            
+            <nav className="space-y-1">
+              <NavGroup
+                icon={<Building className="h-5 w-5" />}
+                label="Managed Groups"
+                collapsed={collapsed}
+                defaultOpen={isActive('/manager/')}
+              >
+                {managedGroups.map((group: string, index: number) => (
+                <Link
+                    key={group} 
+                    to={`/dashboard/manager/group/${group}`}
+                    className="flex items-center py-2 pl-2 rounded-md text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/60"
+                    onClick={handleNavigation}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-purple-500 mr-2"></span>
+                    {`Group ${index + 1}`}
+                </Link>
+                ))}
+              </NavGroup>
+              
+              <NavItem
+                icon={<CircleDollarSign className="h-5 w-5" />}
+                label="Approvals"
+                path="/dashboard/manager/approvals"
+                active={isActive('/dashboard/manager/approvals')}
+                collapsed={collapsed}
+                badge={4}
+                badgeColor="bg-orange-500"
+                onClick={handleNavigation}
+              />
+              
+              <NavItem
+                icon={<FileText className="h-5 w-5" />}
+                label="Manager Reports"
+                path="/dashboard/manager/reports"
+                active={isActive('/dashboard/manager/reports')}
+                collapsed={collapsed}
+                onClick={handleNavigation}
+              />
+            </nav>
           </div>
+        )}
+        
+        {/* Settings and logout */}
+        <div className="mt-auto pt-4 border-t border-gray-200 dark:border-gray-700">
+          <nav className="space-y-1">
+            <NavItem
+              icon={<Settings className="h-5 w-5" />}
+              label="Settings"
+              path="/dashboard/settings"
+              active={isActive('/dashboard/settings')}
+              collapsed={collapsed}
+              onClick={handleNavigation}
+            />
+            
+            <button
+              onClick={onLogout}
+              className={cn(
+                "w-full flex items-center py-3 px-4 rounded-md text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors",
+                collapsed ? "justify-center" : ""
+              )}
+            >
+              <LogOut className="h-5 w-5" />
+              {!collapsed && <span className="ml-3 text-sm font-medium">Logout</span>}
+            </button>
+          </nav>
         </div>
       </div>
-    </>
+    </div>
   );
 };
 

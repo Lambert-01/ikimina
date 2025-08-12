@@ -4,20 +4,45 @@ require('dotenv').config();
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
-      // MongoDB connection options
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    });
-
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
+    // Load environment-specific configuration
+    const env = process.env.NODE_ENV || 'development';
+    let config;
     
-    // Create indexes for better query performance
-    await createIndexes();
+    console.log(`Loading database configuration for ${env} environment...`.blue);
+    
+    try {
+      config = require(`./${env}`);
+      console.log(`Loaded ${env} configuration successfully`.green);
+    } catch (err) {
+      console.log(`No specific config found for ${env}, using default settings`.yellow);
+      config = {
+        database: {
+          uri: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/ikimina',
+          options: {
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
+            serverSelectionTimeoutMS: 5000,
+            socketTimeoutMS: 45000
+          }
+        }
+      };
+    }
+    
+    console.log(`Attempting to connect to MongoDB at: ${config.database.uri}`.cyan);
+    
+    // Connect with environment-specific options
+    const conn = await mongoose.connect(config.database.uri, config.database.options);
+
+    console.log(`MongoDB Connected: ${conn.connection.host} (${env} mode)`.cyan.underline.bold);
+    
+    // Create indexes if not in test environment
+    if (env !== 'test') {
+      await createIndexes();
+    }
     
     return conn;
   } catch (error) {
-    console.error(`Error connecting to MongoDB: ${error.message}`);
+    console.error(`Error connecting to MongoDB: ${error.message}`.red.bold);
     process.exit(1);
   }
 };
@@ -31,7 +56,7 @@ const createIndexes = async () => {
       // User indexes
       await db.collection('users').createIndexes([
         { key: { email: 1 }, unique: true, name: "user_email_unique" },
-        { key: { phone: 1 }, unique: true, name: "user_phone_unique" },
+        { key: { phoneNumber: 1 }, unique: true, name: "user_phone_unique" },
         { key: { nationalId: 1 }, sparse: true, name: "user_nationalId_sparse" }
       ]);
       
@@ -94,15 +119,20 @@ const createIndexes = async () => {
 
 // Configure database logging
 const dbLogger = winston.createLogger({
-  level: 'info',
+  level: process.env.NODE_ENV === 'production' ? 'error' : 'info',
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.json()
   ),
   defaultMeta: { service: 'database' },
   transports: [
-    new winston.transports.File({ filename: 'logs/database.log' }),
-    new winston.transports.Console({ format: winston.format.simple() })
+    new winston.transports.File({ 
+      filename: `logs/database-${process.env.NODE_ENV || 'development'}.log` 
+    }),
+    new winston.transports.Console({ 
+      format: winston.format.simple(),
+      level: process.env.NODE_ENV === 'production' ? 'error' : 'info'
+    })
   ]
 });
 

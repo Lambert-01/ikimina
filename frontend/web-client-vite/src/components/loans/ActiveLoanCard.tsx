@@ -1,166 +1,184 @@
 import React from 'react';
-import { Card, CardContent } from '../ui/card';
+import { 
+  Calendar, 
+  CreditCard, 
+  AlertCircle, 
+  CheckCircle,
+  Clock,
+  ArrowUpRight
+} from 'lucide-react';
+import { formatCurrency, formatDate } from '../../lib/utils';
 import { Button } from '../ui/button';
-import { Progress } from '../ui/progress';
-import { CalendarClock, AlertTriangle, CreditCard, ArrowRight } from 'lucide-react';
 
-interface ActiveLoanProps {
+interface ActiveLoanCardProps {
   id: string;
   amount: number;
-  currency?: string;
-  disbursementDate: string;
-  nextPaymentDate: string;
-  nextPaymentAmount: number;
-  totalPaid: number;
-  totalRemaining: number;
-  repaymentProgress: number;
-  status: 'current' | 'overdue' | 'grace';
-  daysOverdue?: number;
+  amountPaid: number;
+  interestRate: number;
+  dueDate: string;
+  status: 'pending' | 'approved' | 'active' | 'overdue' | 'paid';
   groupName: string;
-  onMakePayment?: () => void;
-  onViewDetails?: () => void;
   className?: string;
+  onMakePayment?: (loanId: string) => void;
 }
 
-const ActiveLoanCard: React.FC<ActiveLoanProps> = ({
+const ActiveLoanCard: React.FC<ActiveLoanCardProps> = ({
   id,
   amount,
-  currency = 'RWF',
-  disbursementDate,
-  nextPaymentDate,
-  nextPaymentAmount,
-  totalPaid,
-  totalRemaining,
-  repaymentProgress,
+  amountPaid,
+  interestRate,
+  dueDate,
   status,
-  daysOverdue = 0,
   groupName,
-  onMakePayment,
-  onViewDetails,
-  className = '',
+  className,
+  onMakePayment
 }) => {
-  // Format currency
-  const formatCurrency = (value: number): string => {
-    return new Intl.NumberFormat('en-RW', {
-      style: 'currency',
-      currency: currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(value);
-  };
-
-  // Format date
-  const formatDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
-  // Get status color and text
-  const getStatusDetails = () => {
+  const isOverdue = status === 'overdue';
+  const isPending = status === 'pending';
+  const isPaid = status === 'paid';
+  const isActive = status === 'active' || status === 'approved';
+  
+  const remainingAmount = amount - amountPaid;
+  const interestAmount = amount * (interestRate / 100);
+  const totalToRepay = amount + interestAmount;
+  const progressPercentage = Math.min(100, Math.round((amountPaid / totalToRepay) * 100));
+  
+  const getStatusColor = () => {
     switch (status) {
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';
+      case 'approved':
+        return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
+      case 'active':
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
       case 'overdue':
-        return {
-          color: 'text-red-600',
-          bgColor: 'bg-red-50',
-          borderColor: 'border-red-200',
-          icon: <AlertTriangle className="h-5 w-5 text-red-500" />,
-          text: `Overdue by ${daysOverdue} ${daysOverdue === 1 ? 'day' : 'days'}`,
-        };
-      case 'grace':
-        return {
-          color: 'text-amber-600',
-          bgColor: 'bg-amber-50',
-          borderColor: 'border-amber-200',
-          icon: <CalendarClock className="h-5 w-5 text-amber-500" />,
-          text: 'In grace period',
-        };
+        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+      case 'paid':
+        return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
       default:
-        return {
-          color: 'text-green-600',
-          bgColor: 'bg-green-50',
-          borderColor: 'border-green-200',
-          icon: <CreditCard className="h-5 w-5 text-green-500" />,
-          text: 'Current',
-        };
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400';
     }
   };
 
-  const statusDetails = getStatusDetails();
+  const getStatusIcon = () => {
+    switch (status) {
+      case 'pending':
+        return <Clock className="h-4 w-4 mr-1" />;
+      case 'approved':
+      case 'active':
+        return <CheckCircle className="h-4 w-4 mr-1" />;
+      case 'overdue':
+        return <AlertCircle className="h-4 w-4 mr-1" />;
+      case 'paid':
+        return <CheckCircle className="h-4 w-4 mr-1" />;
+      default:
+        return null;
+    }
+  };
+
+  const handleMakePayment = () => {
+    if (onMakePayment) {
+      onMakePayment(id);
+    }
+  };
 
   return (
-    <Card className={`${className} ${statusDetails.borderColor}`}>
-      <CardContent className="p-6">
-        <div className="space-y-6">
-          {/* Loan Header */}
-          <div className="flex justify-between items-start">
-            <div>
-              <h3 className="text-lg font-medium text-gray-900">Active Loan</h3>
-              <p className="text-sm text-gray-500">{groupName}</p>
-            </div>
-            <div className={`px-3 py-1 rounded-full flex items-center ${statusDetails.bgColor} ${statusDetails.color}`}>
-              {statusDetails.icon}
-              <span className="ml-1.5 text-xs font-medium">{statusDetails.text}</span>
-            </div>
-          </div>
-          
-          {/* Loan Amount and Progress */}
+    <div className={`
+      bg-white dark:bg-dark-card border border-gray-200 dark:border-dark-border rounded-lg shadow-card dark:shadow-dark-card overflow-hidden
+      transition-all duration-300 hover:shadow-lg
+      ${isOverdue ? 'border-red-200 dark:border-red-900/50' : ''}
+      ${isPaid ? 'border-green-200 dark:border-green-900/50' : ''}
+      ${className || ''}
+    `}>
+      <div className="p-5">
+        <div className="flex justify-between items-start mb-4">
           <div>
-            <div className="flex justify-between items-baseline mb-1">
-              <h4 className="text-2xl font-bold text-gray-900">{formatCurrency(amount)}</h4>
-              <span className="text-sm font-medium">{repaymentProgress}% repaid</span>
-            </div>
-            <Progress value={repaymentProgress} className="h-2" />
-            <div className="flex justify-between mt-1">
-              <span className="text-xs text-gray-500">Paid: {formatCurrency(totalPaid)}</span>
-              <span className="text-xs text-gray-500">Remaining: {formatCurrency(totalRemaining)}</span>
-            </div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-dark-text">
+              {formatCurrency(amount)}
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              from {groupName}
+            </p>
           </div>
-          
-          {/* Loan Details */}
-          <div className="bg-gray-50 rounded-md p-4 space-y-3">
-            <div className="flex justify-between">
-              <span className="text-sm text-gray-500">Disbursement Date</span>
-              <span className="text-sm font-medium">{formatDate(disbursementDate)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-gray-500">Next Payment Due</span>
-              <span className={`text-sm font-medium ${status === 'overdue' ? 'text-red-600' : ''}`}>
-                {formatDate(nextPaymentDate)}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-gray-500">Next Payment Amount</span>
-              <span className="text-sm font-medium">{formatCurrency(nextPaymentAmount)}</span>
-            </div>
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor()}`}>
+            {getStatusIcon()}
+            {status.charAt(0).toUpperCase() + status.slice(1)}
+          </span>
+        </div>
+        
+        {/* Progress bar */}
+        <div className="mb-4">
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-gray-600 dark:text-gray-400">Repayment progress</span>
+            <span className="font-medium text-gray-900 dark:text-gray-300">{progressPercentage}%</span>
           </div>
-          
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
-            {onMakePayment && (
-              <Button 
-                className="flex-1 flex items-center justify-center"
-                onClick={onMakePayment}
-              >
-                Make Payment
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            )}
-            {onViewDetails && (
-              <Button 
-                variant="outline" 
-                className="flex-1"
-                onClick={onViewDetails}
-              >
-                View Details
-              </Button>
-            )}
+          <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div 
+              className={`h-full rounded-full ${isPaid ? 'bg-green-500' : isOverdue ? 'bg-red-500' : 'bg-primary-500'}`}
+              style={{ width: `${progressPercentage}%` }}
+            />
           </div>
         </div>
-      </CardContent>
-    </Card>
+        
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="text-sm">
+              <p className="text-gray-500 dark:text-gray-400">Paid</p>
+              <p className="font-medium text-gray-900 dark:text-gray-300">{formatCurrency(amountPaid)}</p>
+            </div>
+            <div className="text-sm text-right">
+              <p className="text-gray-500 dark:text-gray-400">Remaining</p>
+              <p className={`font-medium ${isOverdue ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-300'}`}>
+                {formatCurrency(remainingAmount)}
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
+            <CreditCard className="h-4 w-4 mr-2 text-gray-500 dark:text-gray-500" />
+            <span>Interest rate: <span className="font-medium">{interestRate}%</span></span>
+          </div>
+          
+          <div className="flex items-center text-sm">
+            <Calendar className="h-4 w-4 mr-2 text-gray-500 dark:text-gray-500" />
+            <div className="flex flex-col">
+              <span className="text-gray-600 dark:text-gray-400">Due date:</span>
+              <span className={`font-medium ${isOverdue ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-gray-300'}`}>
+                {isOverdue && <AlertCircle className="h-3 w-3 inline mr-1" />}
+                {formatDate(dueDate)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div className="bg-gray-50 dark:bg-dark-background/50 px-5 py-3 border-t border-gray-200 dark:border-dark-border">
+        {!isPaid && !isPending && (
+          <Button 
+            onClick={handleMakePayment}
+            className="w-full"
+            variant={isOverdue ? "destructive" : "default"}
+          >
+            Make Payment
+            <ArrowUpRight className="ml-1 h-4 w-4" />
+          </Button>
+        )}
+        
+        {isPending && (
+          <div className="text-center text-sm text-yellow-600 dark:text-yellow-400 flex items-center justify-center">
+            <Clock className="h-4 w-4 mr-1" />
+            Awaiting approval
+          </div>
+        )}
+        
+        {isPaid && (
+          <div className="text-center text-sm text-green-600 dark:text-green-400 flex items-center justify-center">
+            <CheckCircle className="h-4 w-4 mr-1" />
+            Loan fully repaid
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 

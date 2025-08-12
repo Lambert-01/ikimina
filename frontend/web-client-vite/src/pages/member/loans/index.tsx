@@ -1,390 +1,345 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Filter, Calendar, X, Wallet } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/card';
-import LoanRequestCTA from '../../../components/loans/LoanRequestCTA';
-import LoanRequestForm from '../../../components/loans/LoanRequestForm';
+import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs';
+import { getMyLoans } from '../../../services/loanService';
+import { getMyGroups } from '../../../services/groupService';
+import type { Loan } from '../../../services/loanService';
+import type { Group } from '../../../services/groupService';
 import ActiveLoanCard from '../../../components/loans/ActiveLoanCard';
-import { Plus, History, CreditCard } from 'lucide-react';
-import { toast } from 'react-toastify';
+import LoanRequestForm from '../../../components/loans/LoanRequestForm';
 
-interface Loan {
-  id: string;
-  amount: number;
-  currency: string;
-  disbursementDate: string;
-  nextPaymentDate: string;
-  nextPaymentAmount: number;
-  totalPaid: number;
-  totalRemaining: number;
-  repaymentProgress: number;
-  status: 'current' | 'overdue' | 'grace';
-  daysOverdue?: number;
-  groupId: string;
-  groupName: string;
-}
-
-interface LoanHistory {
-  id: string;
-  amount: number;
-  currency: string;
-  disbursementDate: string;
-  completionDate: string;
-  status: 'completed' | 'denied' | 'cancelled';
-  groupName: string;
-}
-
-const LoanRequestPage: React.FC = () => {
-  const [searchParams] = useSearchParams();
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('active-loans');
-  const [showRequestForm, setShowRequestForm] = useState(false);
-  const [activeLoans, setActiveLoans] = useState<Loan[]>([]);
-  const [loanHistory, setLoanHistory] = useState<LoanHistory[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+const LoansPage: React.FC = () => {
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<string>('active');
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [showFilters, setShowFilters] = useState<boolean>(false);
+  const [showLoanRequestForm, setShowLoanRequestForm] = useState<boolean>(false);
+  const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
+  
+  // Data states
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
+  
+  // Filter states
+  const [groupFilter, setGroupFilter] = useState<string>('');
   
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        
-        // In a real app, this would be an API call
-        // For demo purposes, we'll simulate data
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Check if there's a group ID in the URL params
-        const groupId = searchParams.get('group');
-        if (groupId) {
-          setSelectedGroupId(groupId);
-        }
-        
-        // Mock active loans data
-        const mockActiveLoans: Loan[] = [
-          {
-            id: 'loan1',
-            amount: 50000,
-            currency: 'RWF',
-            disbursementDate: '2023-04-15',
-            nextPaymentDate: '2023-06-15',
-            nextPaymentAmount: 4500,
-            totalPaid: 9000,
-            totalRemaining: 45500,
-            repaymentProgress: 16,
-            status: 'current',
-            groupId: 'g1',
-            groupName: 'Community Savings Group'
-          }
-        ];
-        
-        // Mock loan history data
-        const mockLoanHistory: LoanHistory[] = [
-          {
-            id: 'hist1',
-            amount: 30000,
-            currency: 'RWF',
-            disbursementDate: '2022-10-01',
-            completionDate: '2023-03-01',
-            status: 'completed',
-            groupName: 'Community Savings Group'
-          },
-          {
-            id: 'hist2',
-            amount: 15000,
-            currency: 'RWF',
-            disbursementDate: '2022-05-15',
-            completionDate: '2022-08-15',
-            status: 'completed',
-            groupName: 'Women Entrepreneurs'
-          },
-          {
-            id: 'hist3',
-            amount: 25000,
-            currency: 'RWF',
-            disbursementDate: '',
-            completionDate: '2022-04-10',
-            status: 'denied',
-            groupName: 'Community Savings Group'
-          }
-        ];
-        
-        setActiveLoans(mockActiveLoans);
-        setLoanHistory(mockLoanHistory);
-        
-        // If there are no active loans, default to the request tab
-        if (mockActiveLoans.length === 0) {
-          setActiveTab('request-loan');
-        }
-      } catch (error) {
-        console.error('Error fetching loan data:', error);
-        toast.error('Failed to load loan data');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
     fetchData();
-  }, [searchParams]);
-
-  const handleRequestLoan = () => {
-    setShowRequestForm(true);
-    setActiveTab('request-loan');
+  }, []);
+  
+  const fetchData = async () => {
+    try {
+      setIsLoading(true);
+      
+      // Fetch user's loans
+      const loansResponse = await getMyLoans();
+      if (loansResponse.success) {
+        setLoans(loansResponse.data || []);
+      }
+      
+      // Fetch user's groups
+      const groupsResponse = await getMyGroups();
+      if (groupsResponse.success) {
+        setGroups([...groupsResponse.data.memberGroups, ...groupsResponse.data.managedGroups]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch loan data:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
-
-  const handleMakePayment = (loanId: string) => {
-    toast.info(`Navigating to payment for loan ${loanId}`);
-    // In a real app, this would navigate to the payment page
+  
+  const handleRequestLoan = (group?: Group) => {
+    if (group) {
+      setSelectedGroup(group);
+    } else {
+      setSelectedGroup(null);
+    }
+    
+    setShowLoanRequestForm(true);
   };
-
+  
   const handleViewLoanDetails = (loanId: string) => {
-    toast.info(`Viewing details for loan ${loanId}`);
-    // In a real app, this would navigate to the loan details page
+    navigate(`/member/loans/${loanId}`);
   };
-
-  // Format currency
-  const formatCurrency = (amount: number, currency: string = 'RWF'): string => {
-    return new Intl.NumberFormat('en-RW', {
+  
+  const handleRepayLoan = (loanId: string) => {
+    navigate(`/member/loans/${loanId}/repay`);
+  };
+  
+  const handleFilterChange = async () => {
+    try {
+      setIsLoading(true);
+      
+      const params: any = {};
+      if (groupFilter) params.groupId = groupFilter;
+      
+      const response = await getMyLoans(params);
+      if (response.success) {
+        setLoans(response.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to filter loans:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const clearFilters = () => {
+    setGroupFilter('');
+    fetchData();
+  };
+  
+  // Filter loans based on status
+  const activeLoans = loans.filter(loan => 
+    ['approved', 'active'].includes(loan.status)
+  );
+  
+  const pendingLoans = loans.filter(loan => 
+    ['pending', 'voting'].includes(loan.status)
+  );
+  
+  const completedLoans = loans.filter(loan => 
+    ['repaid', 'rejected', 'defaulted'].includes(loan.status)
+  );
+  
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('rw-RW', {
       style: 'currency',
-      currency: currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
+      currency: 'RWF',
+      minimumFractionDigits: 0
     }).format(amount);
   };
-
-  // Format date
-  const formatDate = (dateString: string): string => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
-  if (loading) {
+  
+  // Calculate total borrowed amount
+  const totalBorrowed = loans.reduce((sum, loan) => {
+    if (['approved', 'active', 'repaid'].includes(loan.status)) {
+      return sum + loan.amount;
+    }
+    return sum;
+  }, 0);
+  
+  // Calculate total outstanding amount
+  const totalOutstanding = loans.reduce((sum, loan) => {
+    if (['approved', 'active'].includes(loan.status)) {
+      return sum + (loan.totalRepayment - loan.repaidAmount);
+    }
+    return sum;
+  }, 0);
+  
+  if (showLoanRequestForm) {
     return (
-      <div className="flex flex-col space-y-6 w-full">
-        {/* Skeleton loading state */}
-        <div className="h-24 bg-gray-200 animate-pulse rounded-xl"></div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="h-80 bg-gray-200 animate-pulse rounded-xl"></div>
-          <div className="h-80 bg-gray-200 animate-pulse rounded-xl"></div>
+      <div className="container mx-auto p-4">
+        <div className="mb-6">
+          <Button 
+            variant="outline" 
+            onClick={() => {
+              setShowLoanRequestForm(false);
+              setSelectedGroup(null);
+            }}
+            className="mb-4"
+          >
+            Back to Loans
+          </Button>
+          <h1 className="text-2xl font-bold">Request a Loan</h1>
         </div>
+        
+        <LoanRequestForm 
+          groupId={selectedGroup?._id}
+          onSuccess={() => {
+            setShowLoanRequestForm(false);
+            setSelectedGroup(null);
+            fetchData();
+          }}
+          onCancel={() => {
+            setShowLoanRequestForm(false);
+            setSelectedGroup(null);
+          }}
+        />
       </div>
     );
   }
-
+  
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+    <div className="container mx-auto p-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Loans</h1>
-          <p className="text-gray-600">Manage your loans and make new requests</p>
+          <h1 className="text-2xl font-bold">Loans</h1>
+          <p className="text-gray-500">Manage your loans and repayments</p>
         </div>
-        <div className="mt-4 md:mt-0">
-          {activeLoans.length === 0 && (
-            <Button className="flex items-center" onClick={handleRequestLoan}>
-              <Plus className="h-4 w-4 mr-2" />
-              Request a Loan
-            </Button>
-          )}
+        <div className="mt-4 md:mt-0 flex space-x-2">
+          <Button 
+            variant="outline" 
+            onClick={() => setShowFilters(!showFilters)}
+          >
+            {showFilters ? <X className="mr-2 h-4 w-4" /> : <Filter className="mr-2 h-4 w-4" />}
+            {showFilters ? 'Hide Filters' : 'Filters'}
+          </Button>
+          <Button onClick={() => handleRequestLoan()}>
+            <Plus className="mr-2 h-4 w-4" />
+            Request Loan
+          </Button>
         </div>
       </div>
       
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-3 mb-6">
-          <TabsTrigger value="active-loans" className="flex items-center">
-            <CreditCard className="h-4 w-4 mr-2" />
-            <span className="hidden sm:inline">Active Loans</span>
-            <span className="sm:hidden">Active</span>
+      {/* Loan Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Total Borrowed</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(totalBorrowed)}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Outstanding Balance</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCurrency(totalOutstanding)}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Active Loans</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{activeLoans.length}</div>
+          </CardContent>
+        </Card>
+      </div>
+      
+      {/* Filters */}
+      {showFilters && (
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label htmlFor="groupFilter" className="block text-sm font-medium mb-1">Group</label>
+                <select
+                  id="groupFilter"
+                  value={groupFilter}
+                  onChange={(e) => setGroupFilter(e.target.value)}
+                  className="w-full p-2 border rounded-md"
+                >
+                  <option value="">All Groups</option>
+                  {groups.map((group) => (
+                    <option key={group._id} value={group._id}>{group.name}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="flex items-end space-x-2">
+                <Button onClick={handleFilterChange} className="flex-1">
+                  Apply Filters
+                </Button>
+                <Button variant="outline" onClick={clearFilters}>
+                  Clear
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="active">
+            Active ({activeLoans.length})
           </TabsTrigger>
-          <TabsTrigger value="request-loan" className="flex items-center">
-            <Plus className="h-4 w-4 mr-2" />
-            <span className="hidden sm:inline">Request Loan</span>
-            <span className="sm:hidden">Request</span>
+          <TabsTrigger value="pending">
+            Pending ({pendingLoans.length})
           </TabsTrigger>
-          <TabsTrigger value="loan-history" className="flex items-center">
-            <History className="h-4 w-4 mr-2" />
-            <span className="hidden sm:inline">Loan History</span>
-            <span className="sm:hidden">History</span>
+          <TabsTrigger value="completed">
+            Completed ({completedLoans.length})
           </TabsTrigger>
         </TabsList>
         
-        {/* Active Loans Tab */}
-        <TabsContent value="active-loans" className="space-y-4">
-          {activeLoans.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {activeLoans.map(loan => (
-                <ActiveLoanCard
-                  key={loan.id}
-                  id={loan.id}
-                  amount={loan.amount}
-                  currency={loan.currency}
-                  disbursementDate={loan.disbursementDate}
-                  nextPaymentDate={loan.nextPaymentDate}
-                  nextPaymentAmount={loan.nextPaymentAmount}
-                  totalPaid={loan.totalPaid}
-                  totalRemaining={loan.totalRemaining}
-                  repaymentProgress={loan.repaymentProgress}
-                  status={loan.status}
-                  daysOverdue={loan.daysOverdue}
-                  groupName={loan.groupName}
-                  onMakePayment={() => handleMakePayment(loan.id)}
-                  onViewDetails={() => handleViewLoanDetails(loan.id)}
+        <TabsContent value="active">
+          {isLoading ? (
+            <div className="text-center py-12">
+              <p className="text-gray-500">Loading active loans...</p>
+            </div>
+          ) : activeLoans.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {activeLoans.map((loan) => (
+                <ActiveLoanCard 
+                  key={loan._id}
+                  loan={loan}
+                  onViewDetails={handleViewLoanDetails}
+                  onRepay={handleRepayLoan}
                 />
               ))}
             </div>
           ) : (
             <div className="text-center py-12">
-              <div className="mx-auto h-12 w-12 text-gray-400 mb-4">
-                <CreditCard className="h-12 w-12" />
-              </div>
-              <h3 className="text-lg font-medium text-gray-900">No active loans</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                You don't have any active loans at the moment
-              </p>
-              <div className="mt-6">
-                <Button onClick={handleRequestLoan}>
-                  Request a Loan
-                </Button>
-              </div>
+              <Wallet className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+              <h3 className="text-lg font-medium mb-2">No active loans</h3>
+              <p className="text-gray-500 mb-6">You don't have any active loans at the moment</p>
+              <Button onClick={() => handleRequestLoan()}>
+                Request Your First Loan
+              </Button>
             </div>
           )}
         </TabsContent>
         
-        {/* Request Loan Tab */}
-        <TabsContent value="request-loan" className="space-y-4">
-          {showRequestForm ? (
-            <LoanRequestForm
-              groupId={selectedGroupId || undefined}
-              onSuccess={() => {
-                setShowRequestForm(false);
-                setActiveTab('active-loans');
-              }}
-              onCancel={() => setShowRequestForm(false)}
-            />
+        <TabsContent value="pending">
+          {isLoading ? (
+            <div className="text-center py-12">
+              <p className="text-gray-500">Loading pending loans...</p>
+            </div>
+          ) : pendingLoans.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {pendingLoans.map((loan) => (
+                <ActiveLoanCard 
+                  key={loan._id}
+                  loan={loan}
+                  onViewDetails={handleViewLoanDetails}
+                  onRepay={handleRepayLoan}
+                />
+              ))}
+            </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <LoanRequestCTA
-                groupName="your savings group"
-                maxLoanAmount={100000}
-                onRequestLoan={handleRequestLoan}
-              />
-              
-              <Card>
-                <CardHeader>
-                  <CardTitle>Loan Eligibility</CardTitle>
-                  <CardDescription>
-                    Information about your loan eligibility
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="bg-green-50 p-4 rounded-md">
-                      <h3 className="text-sm font-medium text-green-800">You are eligible for loans</h3>
-                      <p className="mt-1 text-sm text-green-700">
-                        Based on your contribution history and group policies, you can request a loan.
-                      </p>
-                    </div>
-                    
-                    <div className="space-y-3">
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-500">Maximum Loan Amount</span>
-                        <span className="text-sm font-medium">RWF 100,000</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-500">Interest Rate</span>
-                        <span className="text-sm font-medium">5% per annum</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-500">Maximum Repayment Period</span>
-                        <span className="text-sm font-medium">12 months</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-500">Guarantor Required</span>
-                        <span className="text-sm font-medium">Yes</span>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+            <div className="text-center py-12">
+              <Calendar className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+              <h3 className="text-lg font-medium mb-2">No pending loans</h3>
+              <p className="text-gray-500">You don't have any pending loan requests</p>
             </div>
           )}
         </TabsContent>
         
-        {/* Loan History Tab */}
-        <TabsContent value="loan-history" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Loan History</CardTitle>
-              <CardDescription>
-                Your past loans and their status
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loanHistory.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Group
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Amount
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Disbursement Date
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Completion Date
-                        </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Status
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {loanHistory.map((loan) => (
-                        <tr key={loan.id}>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">{loan.groupName}</div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">
-                              {formatCurrency(loan.amount, loan.currency)}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">{formatDate(loan.disbursementDate)}</div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">{formatDate(loan.completionDate)}</div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                              ${loan.status === 'completed' ? 'bg-green-100 text-green-800' : 
-                                loan.status === 'denied' ? 'bg-red-100 text-red-800' : 
-                                'bg-gray-100 text-gray-800'}`}>
-                              {loan.status.charAt(0).toUpperCase() + loan.status.slice(1)}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-gray-500">No loan history available.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        <TabsContent value="completed">
+          {isLoading ? (
+            <div className="text-center py-12">
+              <p className="text-gray-500">Loading completed loans...</p>
+            </div>
+          ) : completedLoans.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {completedLoans.map((loan) => (
+                <ActiveLoanCard 
+                  key={loan._id}
+                  loan={loan}
+                  onViewDetails={handleViewLoanDetails}
+                  onRepay={handleRepayLoan}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Calendar className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+              <h3 className="text-lg font-medium mb-2">No completed loans</h3>
+              <p className="text-gray-500">You don't have any completed loan history</p>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>
   );
 };
 
-export default LoanRequestPage; 
+export default LoansPage; 

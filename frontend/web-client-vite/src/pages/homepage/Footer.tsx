@@ -14,6 +14,11 @@ import {
   Download
 } from 'lucide-react';
 
+// Data URIs for fallback images
+const MTN_LOGO = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDgwIDMyIj48cmVjdCB3aWR0aD0iODAiIGhlaWdodD0iMzIiIGZpbGw9IiNmZmNjMDAiLz48dGV4dCB4PSI0MCIgeT0iMTgiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMiIgZmlsbD0iIzAwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSI+TVROIExvZ288L3RleHQ+PC9zdmc+";
+const AIRTEL_LOGO = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDgwIDMyIj48cmVjdCB3aWR0aD0iODAiIGhlaWdodD0iMzIiIGZpbGw9IiNlNjAwMTIiLz48dGV4dCB4PSI0MCIgeT0iMTgiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMiIgZmlsbD0iI2ZmZiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSI+QWlydGVsPC90ZXh0Pjwvc3ZnPg==";
+const BOK_LOGO = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MCIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDgwIDMyIj48cmVjdCB3aWR0aD0iODAiIGhlaWdodD0iMzIiIGZpbGw9IiMwMDRhODAiLz48dGV4dCB4PSI0MCIgeT0iMTgiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxMiIgZmlsbD0iI2ZmZiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSI+Qm9LPC90ZXh0Pjwvc3ZnPg==";
+
 const Footer: React.FC = () => {
   return (
     <footer className="bg-gray-900 text-white">
@@ -171,7 +176,7 @@ const Footer: React.FC = () => {
                   alt="MTN Mobile Money" 
                   className="h-8"
                   onError={(e) => {
-                    e.currentTarget.src = 'https://via.placeholder.com/80x32?text=MTN';
+                    e.currentTarget.src = MTN_LOGO;
                   }}
                 />
                 <img 
@@ -179,7 +184,7 @@ const Footer: React.FC = () => {
                   alt="Airtel Money" 
                   className="h-8"
                   onError={(e) => {
-                    e.currentTarget.src = 'https://via.placeholder.com/80x32?text=Airtel';
+                    e.currentTarget.src = AIRTEL_LOGO;
                   }}
                 />
                 <img 
@@ -187,7 +192,7 @@ const Footer: React.FC = () => {
                   alt="Bank of Kigali" 
                   className="h-8"
                   onError={(e) => {
-                    e.currentTarget.src = 'https://via.placeholder.com/80x32?text=BoK';
+                    e.currentTarget.src = BOK_LOGO;
                   }}
                 />
               </div>

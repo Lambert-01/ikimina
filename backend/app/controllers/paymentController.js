@@ -1212,4 +1212,371 @@ exports.getPaymentHistory = async (req, res) => {
   }
 };
 
+/**
+ * Make a contribution payment
+ * @route POST /api/payments/contribution
+ * @access Private
+ */
+exports.makeContribution = async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { groupId, amount, paymentMethod, reference } = req.body;
+    
+    // Validate group exists
+    const group = await Group.findById(groupId);
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: 'Group not found'
+      });
+    }
+    
+    // Check if user is a member of the group
+    const isMember = group.members.some(member => 
+      member.user.toString() === req.user.id && member.status === 'active'
+    );
+    
+    if (!isMember) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not an active member of this group'
+      });
+    }
+    
+    // Create transaction record
+    const transaction = new Transaction({
+      user: req.user.id,
+      group: groupId,
+      type: 'contribution',
+      amount,
+      paymentMethod,
+      reference,
+      status: 'completed', // In a real app, this would be 'pending' until confirmed
+      description: `Contribution to ${group.name}`
+    });
+    
+    await transaction.save();
+    
+    // Update user's contribution status in the group
+    const memberIndex = group.members.findIndex(member => 
+      member.user.toString() === req.user.id
+    );
+    
+    if (memberIndex !== -1) {
+      group.members[memberIndex].contributions.paid += amount;
+      group.members[memberIndex].contributions.lastPaid = new Date();
+      await group.save();
+    }
+    
+    // Send notification (would be implemented in a real app)
+    
+    res.status(201).json({
+      success: true,
+      data: transaction,
+      message: 'Contribution payment successful'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get user's contribution history
+ * @route GET /api/payments/contributions
+ * @access Private
+ */
+exports.getContributionHistory = async (req, res, next) => {
+  try {
+    const { groupId, startDate, endDate, limit = 10, page = 1 } = req.query;
+    
+    // Build query
+    const query = {
+      user: req.user.id,
+      type: 'contribution'
+    };
+    
+    if (groupId) {
+      query.group = groupId;
+    }
+    
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) {
+        query.createdAt.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        query.createdAt.$lte = new Date(endDate);
+      }
+    }
+    
+    // Get paginated transactions
+    const transactions = await Transaction.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit))
+      .populate('group', 'name');
+    
+    // Get total count
+    const total = await Transaction.countDocuments(query);
+    
+    res.status(200).json({
+      success: true,
+      count: transactions.length,
+      total,
+      page: parseInt(page),
+      pages: Math.ceil(total / limit),
+      data: transactions
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get contribution summary for a user
+ * @route GET /api/payments/contributions/summary
+ * @access Private
+ */
+exports.getContributionSummary = async (req, res, next) => {
+  try {
+    const { groupId } = req.query;
+    
+    // Build query
+    const query = {
+      user: req.user.id,
+      type: 'contribution',
+      status: 'completed'
+    };
+    
+    if (groupId) {
+      query.group = groupId;
+    }
+    
+    // Get all user's groups
+    const userGroups = await Group.find({
+      'members.user': req.user.id,
+      'members.status': 'active'
+    }).select('name contributionSettings');
+    
+    // Get total contributions
+    const totalContributed = await Transaction.aggregate([
+      { $match: query },
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+    
+    // Get contributions by group
+    const contributionsByGroup = await Transaction.aggregate([
+      { $match: query },
+      { $group: { _id: '$group', total: { $sum: '$amount' } } }
+    ]);
+    
+    // Format group contributions with names
+    const formattedGroupContributions = await Promise.all(
+      contributionsByGroup.map(async (item) => {
+        const group = await Group.findById(item._id).select('name');
+        return {
+          groupId: item._id,
+          groupName: group ? group.name : 'Unknown Group',
+          total: item.total
+        };
+      })
+    );
+    
+    // Calculate upcoming contributions
+    const upcomingContributions = userGroups.map(group => {
+      // In a real app, this would calculate based on contribution cycles
+      return {
+        groupId: group._id,
+        groupName: group.name,
+        amount: group.contributionSettings.amount,
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 1 week from now
+      };
+    });
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        totalContributed: totalContributed.length > 0 ? totalContributed[0].total : 0,
+        contributionsByGroup: formattedGroupContributions,
+        upcomingContributions
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get overdue contributions
+ * @route GET /api/payments/contributions/overdue
+ * @access Private
+ */
+exports.getOverdueContributions = async (req, res, next) => {
+  try {
+    // Get user's groups
+    const userGroups = await Group.find({
+      'members.user': req.user.id,
+      'members.status': 'active'
+    });
+    
+    const overdueContributions = [];
+    
+    // Check each group for overdue contributions
+    // In a real app, this would be based on contribution cycles
+    userGroups.forEach(group => {
+      const memberIndex = group.members.findIndex(member => 
+        member.user.toString() === req.user.id
+      );
+      
+      if (memberIndex !== -1) {
+        const member = group.members[memberIndex];
+        const lastPaid = member.contributions.lastPaid;
+        
+        // If no payment or last payment was more than a month ago
+        if (!lastPaid || (new Date() - lastPaid) > 30 * 24 * 60 * 60 * 1000) {
+          overdueContributions.push({
+            groupId: group._id,
+            groupName: group.name,
+            amount: group.contributionSettings.amount,
+            daysOverdue: lastPaid 
+              ? Math.floor((new Date() - lastPaid) / (24 * 60 * 60 * 1000)) 
+              : 30
+          });
+        }
+      }
+    });
+    
+    res.status(200).json({
+      success: true,
+      count: overdueContributions.length,
+      data: overdueContributions
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Get payment methods for a user
+ * @route GET /api/payments/methods
+ * @access Private
+ */
+exports.getPaymentMethods = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.id).select('mobileMoneyAccounts');
+    
+    res.status(200).json({
+      success: true,
+      data: user.mobileMoneyAccounts || []
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Add a payment method
+ * @route POST /api/payments/methods
+ * @access Private
+ */
+exports.addPaymentMethod = async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { provider, accountNumber, accountName, isPrimary } = req.body;
+    
+    const user = await User.findById(req.user.id);
+    
+    // Check if account already exists
+    const existingAccount = user.mobileMoneyAccounts.find(
+      account => account.accountNumber === accountNumber
+    );
+    
+    if (existingAccount) {
+      return res.status(400).json({
+        success: false,
+        message: 'This account is already registered'
+      });
+    }
+    
+    // If setting as primary, unset any existing primary
+    if (isPrimary) {
+      user.mobileMoneyAccounts.forEach(account => {
+        account.isPrimary = false;
+      });
+    }
+    
+    // Add new account
+    user.mobileMoneyAccounts.push({
+      provider,
+      accountNumber,
+      accountName,
+      isPrimary: isPrimary || user.mobileMoneyAccounts.length === 0, // First account is primary by default
+      isVerified: false // In a real app, this would be verified
+    });
+    
+    await user.save();
+    
+    res.status(201).json({
+      success: true,
+      data: user.mobileMoneyAccounts,
+      message: 'Payment method added successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Remove a payment method
+ * @route DELETE /api/payments/methods/:id
+ * @access Private
+ */
+exports.removePaymentMethod = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    
+    const user = await User.findById(req.user.id);
+    
+    // Find account index
+    const accountIndex = user.mobileMoneyAccounts.findIndex(
+      account => account._id.toString() === id
+    );
+    
+    if (accountIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: 'Payment method not found'
+      });
+    }
+    
+    // Check if it's the primary account
+    if (user.mobileMoneyAccounts[accountIndex].isPrimary && user.mobileMoneyAccounts.length > 1) {
+      // Set another account as primary
+      const newPrimaryIndex = accountIndex === 0 ? 1 : 0;
+      user.mobileMoneyAccounts[newPrimaryIndex].isPrimary = true;
+    }
+    
+    // Remove account
+    user.mobileMoneyAccounts.splice(accountIndex, 1);
+    
+    await user.save();
+    
+    res.status(200).json({
+      success: true,
+      data: user.mobileMoneyAccounts,
+      message: 'Payment method removed successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = exports; 

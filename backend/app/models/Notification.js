@@ -4,153 +4,222 @@ const NotificationSchema = new mongoose.Schema({
   recipient: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: [true, 'Recipient is required']
-  },
-  group: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Group'
+    required: [true, 'Notification recipient is required']
   },
   type: {
     type: String,
     enum: [
-      'contribution', 
-      'loan_request',
-      'loan_approval',
-      'loan_rejection',
-      'loan_repayment',
+      'contribution_due',
+      'contribution_received',
+      'contribution_overdue',
+      'loan_approved',
+      'loan_rejected',
+      'loan_due',
       'loan_overdue',
+      'meeting_scheduled',
       'meeting_reminder',
+      'meeting_cancelled',
       'group_invitation',
-      'system',
+      'group_joined',
+      'group_request_approved',
+      'group_request_rejected',
+      'system_announcement',
       'other'
     ],
     required: [true, 'Notification type is required']
   },
   title: {
     type: String,
-    required: [true, 'Title is required'],
+    required: [true, 'Notification title is required'],
     trim: true
   },
   message: {
     type: String,
-    required: [true, 'Message is required'],
+    required: [true, 'Notification message is required'],
     trim: true
   },
-  status: {
-    type: String,
-    enum: ['unread', 'read', 'archived'],
-    default: 'unread'
+  read: {
+    type: Boolean,
+    default: false
+  },
+  readAt: {
+    type: Date
   },
   priority: {
     type: String,
-    enum: ['low', 'normal', 'high'],
+    enum: ['low', 'normal', 'high', 'urgent'],
     default: 'normal'
   },
-  channels: [{
-    type: String,
-    enum: ['sms', 'email', 'push', 'in_app'],
-    required: [true, 'At least one notification channel is required']
-  }],
-  relatedTo: {
-    model: {
-      type: String,
-      enum: ['Transaction', 'Loan', 'Meeting', 'Group', 'User']
-    },
-    id: mongoose.Schema.Types.ObjectId
+  group: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Group'
   },
-  metadata: {
-    type: mongoose.Schema.Types.Mixed
+  contribution: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Contribution'
   },
-  deliveryStatus: [{
-    channel: {
-      type: String,
-      enum: ['sms', 'email', 'push', 'in_app']
-    },
-    status: {
-      type: String,
-      enum: ['queued', 'sent', 'delivered', 'failed'],
-      default: 'queued'
-    },
-    sentAt: Date,
-    deliveredAt: Date,
-    failedAt: Date,
-    errorMessage: String,
-    providerResponse: mongoose.Schema.Types.Mixed
-  }],
-  readAt: {
-    type: Date
+  loan: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Loan'
+  },
+  meeting: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Meeting'
+  },
+  sender: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+  actionRequired: {
+    type: Boolean,
+    default: false
+  },
+  actionText: {
+    type: String
+  },
+  actionLink: {
+    type: String
   },
   expiresAt: {
     type: Date
   },
-  language: {
-    type: String,
-    enum: ['en', 'rw', 'fr'],
-    default: 'rw' // Default language is Kinyarwanda
+  deliveryStatus: {
+    inApp: {
+      status: {
+        type: String,
+        enum: ['pending', 'delivered', 'failed'],
+        default: 'pending'
+      },
+      deliveredAt: Date,
+      error: String
+    },
+    sms: {
+      status: {
+        type: String,
+        enum: ['pending', 'delivered', 'failed', 'not_applicable'],
+        default: 'not_applicable'
+      },
+      deliveredAt: Date,
+      error: String
+    },
+    email: {
+      status: {
+        type: String,
+        enum: ['pending', 'delivered', 'failed', 'not_applicable'],
+        default: 'not_applicable'
+      },
+      deliveredAt: Date,
+      error: String
+    },
+    push: {
+      status: {
+        type: String,
+        enum: ['pending', 'delivered', 'failed', 'not_applicable'],
+        default: 'not_applicable'
+      },
+      deliveredAt: Date,
+      error: String
+    }
+  },
+  metadata: {
+    type: mongoose.Schema.Types.Mixed
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
   }
 }, {
   timestamps: true
 });
 
-// Index for faster queries
-NotificationSchema.index({ recipient: 1, status: 1, createdAt: -1 });
-NotificationSchema.index({ group: 1, type: 1 });
+// Indexes for faster queries
+NotificationSchema.index({ recipient: 1, read: 1 });
+NotificationSchema.index({ recipient: 1, createdAt: -1 });
+NotificationSchema.index({ type: 1, createdAt: -1 });
 
-// Mark notification as read
+// Method to mark notification as read
 NotificationSchema.methods.markAsRead = function() {
-  this.status = 'read';
+  this.read = true;
   this.readAt = new Date();
   return this.save();
 };
 
-// Archive notification
-NotificationSchema.methods.archive = function() {
-  this.status = 'archived';
-  return this.save();
-};
-
-// Update delivery status for a channel
-NotificationSchema.methods.updateDeliveryStatus = function(channel, status, details = {}) {
-  const channelStatus = this.deliveryStatus.find(item => item.channel === channel);
+// Method to update delivery status
+NotificationSchema.methods.updateDeliveryStatus = function(channel, status, error) {
+  if (!this.deliveryStatus[channel]) {
+    return false;
+  }
   
-  if (channelStatus) {
-    channelStatus.status = status;
-    
-    if (status === 'sent') {
-      channelStatus.sentAt = new Date();
-    } else if (status === 'delivered') {
-      channelStatus.deliveredAt = new Date();
-    } else if (status === 'failed') {
-      channelStatus.failedAt = new Date();
-      channelStatus.errorMessage = details.errorMessage || '';
-    }
-    
-    if (details.providerResponse) {
-      channelStatus.providerResponse = details.providerResponse;
-    }
-  } else {
-    const newStatus = {
-      channel,
-      status
-    };
-    
-    if (status === 'sent') {
-      newStatus.sentAt = new Date();
-    } else if (status === 'delivered') {
-      newStatus.deliveredAt = new Date();
-    } else if (status === 'failed') {
-      newStatus.failedAt = new Date();
-      newStatus.errorMessage = details.errorMessage || '';
-    }
-    
-    if (details.providerResponse) {
-      newStatus.providerResponse = details.providerResponse;
-    }
-    
-    this.deliveryStatus.push(newStatus);
+  this.deliveryStatus[channel].status = status;
+  
+  if (status === 'delivered') {
+    this.deliveryStatus[channel].deliveredAt = new Date();
+  }
+  
+  if (error) {
+    this.deliveryStatus[channel].error = error;
   }
   
   return this.save();
+};
+
+// Static method to create a notification
+NotificationSchema.statics.createNotification = async function(data) {
+  try {
+    const notification = new this({
+      recipient: data.recipient,
+      type: data.type,
+      title: data.title,
+      message: data.message,
+      priority: data.priority || 'normal',
+      group: data.group,
+      contribution: data.contribution,
+      loan: data.loan,
+      meeting: data.meeting,
+      sender: data.sender,
+      actionRequired: data.actionRequired || false,
+      actionText: data.actionText,
+      actionLink: data.actionLink,
+      expiresAt: data.expiresAt,
+      metadata: data.metadata
+    });
+    
+    // Set delivery channels based on user preferences
+    if (data.deliveryChannels) {
+      if (data.deliveryChannels.includes('sms')) {
+        notification.deliveryStatus.sms.status = 'pending';
+      }
+      
+      if (data.deliveryChannels.includes('email')) {
+        notification.deliveryStatus.email.status = 'pending';
+      }
+      
+      if (data.deliveryChannels.includes('push')) {
+        notification.deliveryStatus.push.status = 'pending';
+      }
+    }
+    
+    await notification.save();
+    return notification;
+  } catch (error) {
+    console.error('Error creating notification:', error);
+    throw error;
+  }
+};
+
+// Static method to get unread count for a user
+NotificationSchema.statics.getUnreadCount = async function(userId) {
+  return await this.countDocuments({ recipient: userId, read: false });
+};
+
+// Static method to get recent notifications for a user
+NotificationSchema.statics.getRecentNotifications = async function(userId, limit = 10) {
+  return await this.find({ recipient: userId })
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .populate('sender', 'firstName lastName')
+    .populate('group', 'name')
+    .lean();
 };
 
 module.exports = mongoose.model('Notification', NotificationSchema); 

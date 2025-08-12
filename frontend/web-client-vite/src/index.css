@@ -17,7 +17,21 @@
   }
   
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-gray-50 text-gray-900 transition-colors duration-300;
+  }
+  
+  .dark body {
+    @apply bg-dark-background text-dark-text;
+  }
+  
+  /* Focus styles */
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary-500 dark:ring-primary-400;
+  }
+  
+  /* Selection styles */
+  ::selection {
+    @apply bg-primary-100 text-primary-900 dark:bg-primary-900 dark:text-primary-100;
   }
 }
 
@@ -28,19 +42,20 @@
   }
   
   .btn-primary {
-    @apply bg-primary-500 text-white hover:bg-primary-600 focus:ring-primary-400;
+    @apply bg-primary-500 text-white hover:bg-primary-600 focus:ring-primary-400 dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-500;
   }
   
   .btn-secondary {
-    @apply bg-secondary-500 text-black hover:bg-secondary-600 focus:ring-secondary-400;
+    @apply bg-secondary-500 text-black hover:bg-secondary-600 focus:ring-secondary-400 dark:bg-secondary-600 dark:hover:bg-secondary-700 dark:focus:ring-secondary-500;
   }
   
   .btn-accent {
-    @apply bg-accent-500 text-white hover:bg-accent-600 focus:ring-accent-400;
+    @apply bg-accent-500 text-white hover:bg-accent-600 focus:ring-accent-400 dark:bg-accent-600 dark:hover:bg-accent-700 dark:focus:ring-accent-500;
   }
   
   .btn-outline {
-    @apply bg-white text-gray-700 border-gray-300 hover:bg-gray-50 focus:ring-primary-500;
+    @apply bg-white text-gray-700 border-gray-300 hover:bg-gray-50 focus:ring-primary-500 
+           dark:bg-dark-card dark:text-gray-300 dark:border-gray-700 dark:hover:bg-dark-border;
   }
   
   .btn-danger {
@@ -48,36 +63,49 @@
   }
   
   .card {
-    @apply bg-white rounded-2xl shadow-card p-6 transition duration-300;
+    @apply bg-white rounded-2xl shadow-card p-6 transition duration-300 
+           dark:bg-dark-card dark:border dark:border-dark-border dark:shadow-dark-card;
   }
   
   .form-input {
-    @apply block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500;
+    @apply block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500
+           dark:bg-dark-background dark:border-dark-border dark:text-dark-text dark:focus:border-primary-600;
   }
   
   .form-label {
-    @apply block text-sm font-medium text-gray-700 mb-1;
+    @apply block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300;
   }
 
   .section-title {
-    @apply text-3xl md:text-4xl font-bold mb-4 text-center;
+    @apply text-3xl md:text-4xl font-bold mb-4 text-center dark:text-dark-text;
   }
 
   .section-subtitle {
-    @apply text-lg text-gray-600 max-w-3xl mx-auto text-center mb-12;
+    @apply text-lg text-gray-600 max-w-3xl mx-auto text-center mb-12 dark:text-gray-400;
   }
 
   .rwandan-pattern-bg {
     background-image: url('data:image/svg+xml;utf8,<svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><path d="M0 0h20v20H0zm20 20h20v20H20zM0 40h20v20H0zm40 0h20v20H40z" fill="rgb(46, 125, 50)" fill-opacity="0.05"/></svg>');
     background-repeat: repeat;
   }
+  
+  .dark .rwandan-pattern-bg {
+    background-image: url('data:image/svg+xml;utf8,<svg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"><path d="M0 0h20v20H0zm20 20h20v20H20zM0 40h20v20H0zm40 0h20v20H40z" fill="rgb(46, 125, 50)" fill-opacity="0.1"/></svg>');
+  }
 
   .feature-card {
-    @apply bg-white rounded-xl shadow-card p-6 hover:shadow-lg transition-all duration-300 hover:-translate-y-1;
+    @apply bg-white rounded-xl shadow-card p-6 hover:shadow-lg transition-all duration-300 hover:-translate-y-1
+           dark:bg-dark-card dark:border dark:border-dark-border dark:hover:border-primary-900;
   }
 
   .partner-logo {
-    @apply bg-white p-4 rounded-lg filter grayscale hover:grayscale-0 transition-all duration-300 flex items-center justify-center h-24;
+    @apply bg-white p-4 rounded-lg filter grayscale hover:grayscale-0 transition-all duration-300 flex items-center justify-center h-24
+           dark:bg-dark-card dark:border dark:border-dark-border;
+  }
+  
+  /* Skeleton loading animation */
+  .skeleton {
+    @apply bg-gray-200 dark:bg-gray-700 animate-pulse rounded;
   }
 }
 
@@ -90,6 +118,22 @@
   .animate-slide-up {
     animation: slideUp 0.5s ease-out forwards;
   }
+  
+  .animate-slide-in-right {
+    animation: slideInRight 0.3s ease-out forwards;
+  }
+  
+  .animate-bounce-in {
+    animation: bounceIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  }
+  
+  .animate-scale {
+    animation: scale 0.3s ease-out forwards;
+  }
+  
+  .animate-spin-slow {
+    animation: spin 3s linear infinite;
+  }
 
   @keyframes fadeIn {
     from { opacity: 0; }
@@ -100,4 +144,68 @@
     from { transform: translateY(20px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
   }
+  
+  @keyframes slideInRight {
+    from { transform: translateX(20px); opacity: 0; }
+    to { transform: translateX(0); opacity: 0.99; }
+  }
+  
+  @keyframes bounceIn {
+    0% { transform: scale(0.8); opacity: 0; }
+    70% { transform: scale(1.05); opacity: 0.9; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  
+  @keyframes scale {
+    from { transform: scale(0.95); }
+    to { transform: scale(1); }
+  }
+  
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+}
+
+/* Transitions */
+.page-transition {
+  @apply transition-all duration-300 ease-in-out;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  @apply w-2;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-100 dark:bg-dark-background;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 dark:bg-gray-700 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400 dark:bg-gray-600;
+}
+
+/* Toast styles */
+.Toastify__toast {
+  @apply rounded-lg shadow-lg;
+}
+
+.Toastify__toast--success {
+  @apply bg-green-500 text-white;
+}
+
+.Toastify__toast--error {
+  @apply bg-red-500 text-white;
+}
+
+.Toastify__toast--warning {
+  @apply bg-yellow-500 text-black;
+}
+
+.Toastify__toast--info {
+  @apply bg-blue-500 text-white;
 }

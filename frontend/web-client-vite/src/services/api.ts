@@ -1,106 +1,146 @@
 import axios from 'axios';
+import type { AxiosResponse } from 'axios';
 
-// Check if we're in development mode
-const isDevelopment = import.meta.env.MODE === 'development';
-const DEV_AUTH_TOKEN = 'dev-auth-token-ikimina-123';
+// Define base URL - prefer Vite env when available, fallback to localhost
+const BASE_URL =
+  (typeof import.meta !== 'undefined' && (import.meta as any).env && ((import.meta as any).env.VITE_API_URL || (import.meta as any).env.VITE_BACKEND_URL)) ||
+  (typeof process !== 'undefined' && (process as any).env && (((process as any).env.VITE_API_URL) || ((process as any).env.VITE_BACKEND_URL))) ||
+  'http://localhost:5000';
 
-// Get API URL from environment variables or use fallback with the correct path
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000') + '/api';
-console.log('Using API URL:', API_URL, 'in', isDevelopment ? 'development' : 'production', 'mode');
+console.log('API Base URL:', BASE_URL);
 
+// Create axios instance with base URL
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: BASE_URL,
   headers: {
     'Content-Type': 'application/json'
   },
-  withCredentials: true // Enable cookies and authorization headers
+  withCredentials: true, // Enable cookies for cross-origin requests
+  timeout: 10000 // 10 second timeout
 });
 
-// Request interceptor for auth token
+// Add request interceptor to include authentication token in headers
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    // Check if request is for admin endpoints
+    const url = config.url || '';
+    const isAdminRequest =
+      url.startsWith('/admin') ||
+      url.startsWith('/api/admin') ||
+      // admin actions under /api that still require admin tokens
+      /\/api\/groups\/[^/]+\/(approve|reject)/.test(url);
+    
+    // Get appropriate token based on request type
+    const token = isAdminRequest 
+      ? localStorage.getItem('adminToken') 
+      : localStorage.getItem('token');
+    
+    // If token exists, add it to request headers
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-      
-      // In development mode, add special header for auth bypass
-      if (isDevelopment && token === DEV_AUTH_TOKEN) {
-        config.headers['X-Dev-Auth-Bypass'] = 'true';
-      }
     }
+    
+    console.log(`Making ${config.method?.toUpperCase()} request to: ${config.baseURL}${config.url}`);
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    console.error('Request error:', error);
+    return Promise.reject(error);
+  }
 );
 
-// Response interceptor for error handling
+// Add response interceptor to handle common errors
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log(`Response from ${response.config.url}:`, response.status);
+    return response;
+  },
   (error) => {
-    // Handle network errors
-    if (!error.response) {
-      console.error('Network Error:', error.message);
-      
-      // In development mode with auth bypass, don't reject authentication errors
-      if (isDevelopment && localStorage.getItem('token') === DEV_AUTH_TOKEN && 
-          error.message.includes('401')) {
-        console.log('DEV MODE: Ignoring authentication error');
-        return Promise.resolve({
-          data: {
-            success: true,
-            message: 'Operation successful (Dev Mode)',
-            data: {}
-          }
-        });
-      }
-      
-      // Return a standardized error format
-      return Promise.reject({
-        response: {
-          data: {
-            message: 'Network error. Please check your connection and try again.',
-            error: error.message
-          },
-          status: 0
-        }
-      });
+    // Network errors (server not running, etc.)
+    if (error.code === 'ERR_NETWORK') {
+      console.error('Network error - Is the backend server running?', error.message);
+      // You could show a toast notification here
     }
     
-    const { response } = error;
-    
-    // Handle token expiration
-    if (response && response.status === 401) {
-      // In development mode with the special token, don't redirect
-      if (isDevelopment && localStorage.getItem('token') === DEV_AUTH_TOKEN) {
-        console.log('DEV MODE: Ignoring 401 Unauthorized error');
-        return Promise.resolve({
-          data: {
-            success: true,
-            message: 'Operation successful (Dev Mode)',
-            data: {}
-          }
-        });
-      }
+    // Handle unauthorized errors (401)
+    if (error.response && error.response.status === 401) {
+      console.error('Authentication error:', error.response.data);
       
-      // Otherwise handle normally
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+      // Check if this is an admin request or if we're on admin pages
+      const isAdminContext = error.config?.url?.startsWith('/admin') || 
+                           window.location.pathname.startsWith('/admin');
+      
+      if (isAdminContext) {
+        // Clear admin token and redirect to admin login
+        localStorage.removeItem('adminToken');
+        if (!window.location.pathname.includes('/admin/login')) {
+          window.location.href = '/admin/login';
+        }
+      } else {
+        // Clear user token and redirect to user login
+        localStorage.removeItem('token');
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
+      }
     }
     
     // Handle server errors
-    if (response && response.status >= 500) {
-      console.error('Server error:', error);
-      // Could implement centralized error logging here
-      
-      // In development mode, provide more helpful message
-      if (isDevelopment) {
-        console.log('DEV MODE: Server error details:', response.data);
-      }
+    if (error.response && error.response.status >= 500) {
+      console.error('Server error:', error.response.data);
     }
     
     return Promise.reject(error);
   }
 );
 
-export default api; 
+// API client
+const apiClient = {
+  get: async (url: string, config = {}): Promise<AxiosResponse> => {
+    try {
+      return await api.get(url, config);
+    } catch (error) {
+      console.error(`GET ${url} failed:`, error);
+      throw error;
+    }
+  },
+
+  post: async (url: string, data = {}, config = {}): Promise<AxiosResponse> => {
+    try {
+      return await api.post(url, data, config);
+    } catch (error) {
+      console.error(`POST ${url} failed:`, error);
+      throw error;
+    }
+  },
+
+  put: async (url: string, data = {}, config = {}): Promise<AxiosResponse> => {
+    try {
+      return await api.put(url, data, config);
+    } catch (error) {
+      console.error(`PUT ${url} failed:`, error);
+      throw error;
+    }
+  },
+  
+  delete: async (url: string, config = {}): Promise<AxiosResponse> => {
+    try {
+      return await api.delete(url, config);
+    } catch (error) {
+      console.error(`DELETE ${url} failed:`, error);
+      throw error;
+    }
+  },
+
+  // Add missing PATCH helper used across services
+  patch: async (url: string, data = {}, config = {}): Promise<AxiosResponse> => {
+    try {
+      return await api.patch(url, data, config);
+    } catch (error) {
+      console.error(`PATCH ${url} failed:`, error);
+      throw error;
+    }
+  }
+};
+
+export default apiClient; 
